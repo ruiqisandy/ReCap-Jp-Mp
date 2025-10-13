@@ -57,60 +57,45 @@
     try {
       console.log('[Gemini Scraper] Extracting conversation list...');
 
-      // Try multiple possible selectors for conversation list
-      const possibleSelectors = [
-        '[role="navigation"] a',
-        'nav a[href*="/app/"]',
-        '[data-test-id="chat-history"] a',
-        'aside a'
-      ];
-
-      let conversationElements = [];
-
-      for (const selector of possibleSelectors) {
-        try {
-          await waitForElement(selector, 3000);
-          conversationElements = document.querySelectorAll(selector);
-          if (conversationElements.length > 0) {
-            console.log('[Gemini Scraper] Found elements with selector:', selector);
-            break;
-          }
-        } catch (error) {
-          console.log('[Gemini Scraper] Selector not found:', selector);
-        }
-      }
-
-      if (conversationElements.length === 0) {
-        console.warn('[Gemini Scraper] No conversation elements found');
-        return [];
-      }
+      // Wait for conversation elements to load (Gemini uses divs, not links)
+      await waitForElement('.conversation', 10000);
 
       // Small delay to ensure content is rendered
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      console.log('[Gemini Scraper] Found', conversationElements.length, 'potential conversations');
+      // Gemini uses div elements with class "conversation" instead of links
+      const conversationElements = document.querySelectorAll('.conversation');
+      console.log('[Gemini Scraper] Found', conversationElements.length, 'conversations');
 
       const conversations = [];
 
       for (const elem of conversationElements) {
         try {
-          // Skip non-conversation links
-          const url = elem.href;
-          if (!url || !url.includes('/app/')) {
+          // Extract title from conversation-title element
+          const titleElement = elem.querySelector('.conversation-title');
+          const title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+
+          // Extract ID from jslog attribute
+          // Format: jslog="...BardVeMetadataKey:[...,["c_CONVERSATION_ID",...]]..."
+          const jslogAttr = elem.getAttribute('jslog');
+          let conversationId = null;
+
+          if (jslogAttr) {
+            // Try to extract conversation ID from jslog using regex
+            const idMatch = jslogAttr.match(/\["c_([a-zA-Z0-9]+)"/);
+            if (idMatch) {
+              conversationId = idMatch[1];
+            }
+          }
+
+          if (!conversationId) {
+            console.warn('[Gemini Scraper] Could not extract conversation ID from element');
             continue;
           }
 
-          // Extract title from link text or child elements
-          const title = elem.textContent?.trim() || 'Untitled Conversation';
-
-          // Extract ID from URL (format may vary)
-          const idMatch = url.match(/\/app\/([a-zA-Z0-9-]+)/);
-          const id = idMatch ? `gemini-${idMatch[1]}` : null;
-
-          if (!id) {
-            console.warn('[Gemini Scraper] Could not extract ID from URL:', url);
-            continue;
-          }
+          // Build URL (format: /app/{id})
+          const url = `https://gemini.google.com/app/${conversationId}`;
+          const id = `gemini-${conversationId}`;
 
           // Create conversation metadata object
           const conversation = {

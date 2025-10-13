@@ -56,14 +56,14 @@
     try {
       console.log('[Claude Scraper] Extracting conversation list...');
 
-      // Wait for chat list to load
-      await waitForElement('[data-testid="chat-list"]', 10000);
+      // Wait for sidebar navigation to load
+      await waitForElement('nav[aria-label="Sidebar"]', 10000);
 
       // Small delay to ensure content is rendered
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Find all conversation links in chat list
-      const conversationElements = document.querySelectorAll('[data-testid="chat-list"] a');
+      // Find all conversation links (Claude uses direct links with /chat/ in href)
+      const conversationElements = document.querySelectorAll('a[href*="/chat/"]');
       console.log('[Claude Scraper] Found', conversationElements.length, 'conversations');
 
       const conversations = [];
@@ -117,14 +117,14 @@
     try {
       console.log('[Claude Scraper] Extracting current conversation...');
 
-      // Wait for messages to load
-      await waitForElement('[data-testid="message"]', 10000);
+      // Wait for main content area to load (Claude changed their structure)
+      await waitForElement('div.w-full.relative.min-w-0', 10000);
 
       // Small delay to ensure all content is rendered
       await new Promise(resolve => setTimeout(resolve, 800));
 
       // Extract title from page or use default
-      const titleElement = document.querySelector('h1, [data-testid="chat-title"]');
+      const titleElement = document.querySelector('h1');
       const title = titleElement?.textContent?.trim() || 'Untitled Conversation';
 
       // Extract URL and ID
@@ -132,30 +132,22 @@
       const idMatch = url.match(/\/chat\/([a-zA-Z0-9-]+)/);
       const id = idMatch ? `claude-${idMatch[1]}` : `claude-${Date.now()}`;
 
-      // Extract all messages
-      const messageElements = document.querySelectorAll('[data-testid="message"]');
-      console.log('[Claude Scraper] Found', messageElements.length, 'messages');
+      // Get main content area (Claude's new structure doesn't use data-testid attributes)
+      const mainContent = document.querySelector('div.w-full.relative.min-w-0');
 
-      const messages = [];
-      let rawContent = '';
+      // Extract all text content from main area
+      const rawContent = mainContent?.innerText?.trim() || '';
 
-      for (const messageElement of messageElements) {
-        try {
-          // Determine role - check if it's a user message
-          const isUserMessage = messageElement.querySelector('[data-testid="user-message"]') !== null;
-          const role = isUserMessage ? 'user' : 'assistant';
+      console.log('[Claude Scraper] Extracted conversation content:', rawContent.length, 'characters');
 
-          // Extract content from innerText
-          const content = messageElement.innerText?.trim() || '';
-
-          if (content) {
-            messages.push({ role, content });
-            rawContent += `[${role.toUpperCase()}]\n${content}\n\n`;
-          }
-        } catch (error) {
-          console.error('[Claude Scraper] Error extracting message:', error);
+      // For Claude, we'll store the entire conversation as one message since
+      // individual message separation is unreliable with their current DOM structure
+      const messages = [
+        {
+          role: 'assistant',
+          content: rawContent
         }
-      }
+      ];
 
       // Create conversation object
       const conversation = {
@@ -165,12 +157,12 @@
         url,
         date: Date.now(),
         messages,
-        rawContent: rawContent.trim(),
+        rawContent,
         processed: false,
         labelIds: []
       };
 
-      console.log('[Claude Scraper] Extracted conversation with', messages.length, 'messages');
+      console.log('[Claude Scraper] Extracted conversation with', rawContent.length, 'characters of content');
       return conversation;
 
     } catch (error) {
