@@ -56,74 +56,6 @@
   async function scrollToLoadAll(maxScrolls = 100) {
     console.log('[ChatGPT Scraper] Starting auto-scroll to load all conversations...');
 
-    // Find the scrollable container within the nav
-    const nav = document.querySelector('nav[aria-label="Chat history"]');
-    if (!nav) {
-      console.error('[ChatGPT Scraper] Could not find nav element');
-      return;
-    }
-
-    // Find the actual scrollable container by looking for one with large scrollHeight
-    // Try multiple strategies to find the correct scrollable element
-    let scrollContainer = null;
-
-    // Strategy 1: Find the parent of the conversation links (they're inside the scrollable area)
-    const firstLink = nav.querySelector('a[href*="/c/"]');
-    if (firstLink) {
-      let parent = firstLink.parentElement;
-      // Walk up the tree to find a scrollable ancestor
-      while (parent && parent !== nav) {
-        const computedStyle = window.getComputedStyle(parent);
-        const overflowY = computedStyle.overflowY;
-        if ((overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > 200) {
-          scrollContainer = parent;
-          console.log('[ChatGPT Scraper] Found scrollable container via link parent (scrollHeight:', parent.scrollHeight, ')');
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
-
-    // Strategy 2: Find any div with overflow and large scrollHeight
-    if (!scrollContainer) {
-      const allDivs = nav.querySelectorAll('div');
-      for (const div of allDivs) {
-        const computedStyle = window.getComputedStyle(div);
-        const overflowY = computedStyle.overflowY;
-        if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'hidden') && div.scrollHeight > 200) {
-          scrollContainer = div;
-          console.log('[ChatGPT Scraper] Found scrollable container via overflow check (scrollHeight:', div.scrollHeight, ', overflow:', overflowY, ')');
-          break;
-        }
-      }
-    }
-
-    // Strategy 3: Fallback - find largest div by scrollHeight (likely the scrollable one)
-    if (!scrollContainer) {
-      const allDivs = nav.querySelectorAll('div');
-      let largestDiv = null;
-      let maxScrollHeight = 200;
-
-      for (const div of allDivs) {
-        if (div.scrollHeight > maxScrollHeight) {
-          maxScrollHeight = div.scrollHeight;
-          largestDiv = div;
-        }
-      }
-
-      if (largestDiv) {
-        scrollContainer = largestDiv;
-        console.log('[ChatGPT Scraper] Found scrollable container via size heuristic (scrollHeight:', largestDiv.scrollHeight, ')');
-      }
-    }
-
-    if (!scrollContainer) {
-      console.error('[ChatGPT Scraper] Could not find scrollable container');
-      return;
-    }
-
-    console.log('[ChatGPT Scraper] Using scrollable container with initial scrollHeight:', scrollContainer.scrollHeight);
-
     let previousCount = 0;
     let unchangedCount = 0;
     let scrollAttempts = 0;
@@ -135,12 +67,21 @@
 
       console.log(`[ChatGPT Scraper] Scroll attempt ${scrollAttempts + 1}: Found ${currentCount} conversations`);
 
-      // Scroll the container to bottom to trigger lazy loading
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      console.log(`[ChatGPT Scraper] Scrolled container to bottom (scrollTop: ${scrollContainer.scrollTop}, scrollHeight: ${scrollContainer.scrollHeight})`);
+      // Get the last conversation link
+      if (currentLinks.length > 0) {
+        const lastLink = currentLinks[currentLinks.length - 1];
 
-      // Wait for content to load
-      await new Promise(resolve => setTimeout(resolve, 1500));
+        // Scroll the last link into view to trigger lazy loading
+        lastLink.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+        console.log(`[ChatGPT Scraper] Scrolled last link into view`);
+      } else {
+        console.warn('[ChatGPT Scraper] No conversation links found to scroll');
+        break;
+      }
+
+      // Wait longer for content to load (ChatGPT can be slow)
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Count again after scroll
       const newLinks = document.querySelectorAll('nav[aria-label="Chat history"] a[href*="/c/"]');
