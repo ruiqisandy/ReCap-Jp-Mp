@@ -35,9 +35,11 @@ const welcomeScreen = document.getElementById('welcomeScreen');
 const welcomeAiStatus = document.getElementById('welcomeAiStatus');
 const welcomeAiStatusDot = document.getElementById('welcomeAiStatusDot');
 const startImportBtn = document.getElementById('startImportBtn');
+const viewLibraryFromWelcomeBtn = document.getElementById('viewLibraryFromWelcomeBtn');
 
 // DOM elements - Progress Screen
 const progressScreen = document.getElementById('progressScreen');
+const backToWelcomeBtn = document.getElementById('backToWelcomeBtn');
 const chatgptCountEl = document.getElementById('chatgptCount');
 const claudeCountEl = document.getElementById('claudeCount');
 const geminiCountEl = document.getElementById('geminiCount');
@@ -47,6 +49,7 @@ const viewLibraryBtn = document.getElementById('viewLibraryBtn');
 
 // DOM elements - Library Screen
 const libraryScreen = document.getElementById('libraryScreen');
+const backToWelcomeFromLibraryBtn = document.getElementById('backToWelcomeFromLibraryBtn');
 const refreshBtn = document.getElementById('refreshBtn');
 const suggestedBadge = document.getElementById('suggestedBadge');
 const suggestedList = document.getElementById('suggestedList');
@@ -117,13 +120,16 @@ async function loadCurrentScreen() {
     if (response.success) {
       const stats = response.data;
 
-      // If chats exist, show library screen
+      // If chats exist, show library screen by default
       if (stats.chatCount > 0) {
         showScreen('library');
         await loadLibrary();
+        // Also show the "View My Library" button on welcome screen
+        viewLibraryFromWelcomeBtn.style.display = 'block';
       } else {
         // Otherwise show welcome screen
         showScreen('welcome');
+        viewLibraryFromWelcomeBtn.style.display = 'none';
       }
     }
   } catch (error) {
@@ -162,11 +168,22 @@ function showScreen(screenName) {
  * Setup event listeners
  */
 function setupEventListeners() {
+  // Welcome Screen
   startImportBtn.addEventListener('click', startImport);
+  viewLibraryFromWelcomeBtn.addEventListener('click', () => {
+    showScreen('library');
+    loadLibrary();
+  });
+
+  // Progress Screen
+  backToWelcomeBtn.addEventListener('click', () => showScreen('welcome'));
   viewLibraryBtn.addEventListener('click', () => {
     showScreen('library');
     loadLibrary();
   });
+
+  // Library Screen
+  backToWelcomeFromLibraryBtn.addEventListener('click', () => showScreen('welcome'));
   refreshBtn.addEventListener('click', loadLibrary);
   createLabelBtn.addEventListener('click', handleCreateLabel);
   settingsBtn.addEventListener('click', handleSettings);

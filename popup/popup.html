@@ -40,6 +40,10 @@
           Import & Analyze All Chats
         </button>
 
+        <button id="viewLibraryFromWelcomeBtn" class="btn-link" style="margin-top: 12px; display: none;">
+          View My Library →
+        </button>
+
         <p class="hint-text">We'll automatically detect your conversations from supported sites</p>
       </main>
 
@@ -51,6 +55,11 @@
     <!-- SCREEN 2: PROGRESS SCREEN -->
     <div id="progressScreen" class="screen" style="display: none;">
       <header class="progress-header">
+        <button id="backToWelcomeBtn" class="btn-icon-only" style="position: absolute; left: 16px;">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+            <path d="M12.5 15L7.5 10L12.5 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <h1>Importing Conversations</h1>
         <p class="subtitle">Please keep this popup open</p>
       </header>
@@ -110,6 +119,11 @@
     <!-- SCREEN 3: LIBRARY SCREEN -->
     <div id="libraryScreen" class="screen" style="display: none;">
       <header class="library-header">
+        <button id="backToWelcomeFromLibraryBtn" class="btn-icon-only" style="margin-right: auto;">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+            <path d="M12.5 15L7.5 10L12.5 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <h1>Your Knowledge Hub</h1>
         <button id="refreshBtn" class="btn-icon-only">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
