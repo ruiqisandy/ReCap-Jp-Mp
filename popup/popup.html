@@ -8,62 +8,155 @@
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>AI-ReCap</h1>
-      <p class="tagline">Your AI Knowledge Hub</p>
-    </header>
 
-    <main>
-      <!-- Status Section -->
-      <section class="status-section">
-        <div class="status-item">
-          <span class="status-label">Total Chats:</span>
-          <span class="status-value" id="chatCount">-</span>
+    <!-- SCREEN 1: WELCOME SCREEN -->
+    <div id="welcomeScreen" class="screen">
+      <header class="welcome-header">
+        <div class="logo">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="3"/>
+            <path d="M15 24L21 30L33 18" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
         </div>
-        <div class="status-item">
-          <span class="status-label">Labels:</span>
-          <span class="status-value" id="labelCount">-</span>
-        </div>
-        <div class="status-item">
-          <span class="status-label">AI Status:</span>
-          <span class="status-value" id="aiStatus">Checking...</span>
-        </div>
-      </section>
+        <h1>AI-ReCap</h1>
+        <p class="tagline">Your AI Knowledge Hub</p>
+      </header>
 
-      <!-- Action Buttons -->
-      <section class="actions-section">
-        <button id="importBtn" class="btn btn-primary">
-          Import Chats
+      <main class="welcome-main">
+        <h2>Let's turn your chat history into a personal knowledge base</h2>
+
+        <div class="ai-status-card">
+          <div class="ai-status-indicator">
+            <span class="status-dot" id="welcomeAiStatusDot"></span>
+            <span class="status-text" id="welcomeAiStatus">Checking AI...</span>
+          </div>
+          <p class="ai-status-hint">Chrome's Built-in AI will analyze and organize your chats</p>
+        </div>
+
+        <button id="startImportBtn" class="btn btn-primary btn-large">
+          <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 3V17M10 17L5 12M10 17L15 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Import & Analyze All Chats
         </button>
-        <button id="processBtn" class="btn btn-secondary">
-          Process with AI
-        </button>
-        <button id="viewLabelsBtn" class="btn btn-secondary">
-          View Labels
-        </button>
-      </section>
 
-      <!-- Import Status -->
-      <section class="import-status" id="importStatus" style="display: none;">
-        <div class="progress-bar">
-          <div class="progress-fill" id="progressFill"></div>
+        <p class="hint-text">We'll automatically detect your conversations from supported sites</p>
+      </main>
+
+      <footer class="welcome-footer">
+        <p class="supported-platforms">Supports: ChatGPT • Claude • Gemini</p>
+      </footer>
+    </div>
+
+    <!-- SCREEN 2: PROGRESS SCREEN -->
+    <div id="progressScreen" class="screen" style="display: none;">
+      <header class="progress-header">
+        <h1>Importing Conversations</h1>
+        <p class="subtitle">Please keep this popup open</p>
+      </header>
+
+      <main class="progress-main">
+        <div class="platform-stats">
+          <div class="platform-stat">
+            <div class="platform-icon chatgpt">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="10"/>
+              </svg>
+            </div>
+            <div class="platform-info">
+              <span class="platform-name">ChatGPT</span>
+              <span class="platform-count" id="chatgptCount">0</span>
+            </div>
+          </div>
+
+          <div class="platform-stat">
+            <div class="platform-icon claude">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="10"/>
+              </svg>
+            </div>
+            <div class="platform-info">
+              <span class="platform-name">Claude</span>
+              <span class="platform-count" id="claudeCount">0</span>
+            </div>
+          </div>
+
+          <div class="platform-stat">
+            <div class="platform-icon gemini">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="12" r="10"/>
+              </svg>
+            </div>
+            <div class="platform-info">
+              <span class="platform-name">Gemini</span>
+              <span class="platform-count" id="geminiCount">0</span>
+            </div>
+          </div>
         </div>
-        <p class="status-text" id="statusText">Processing...</p>
-      </section>
 
-      <!-- Quick Info -->
-      <section class="info-section">
-        <p class="info-text">
-          <strong>Module 1 Setup Complete!</strong><br>
-          Foundation ready for chat import and AI processing.
-        </p>
-      </section>
-    </main>
+        <div class="progress-section">
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+          </div>
+          <p class="status-text" id="statusText">Initializing...</p>
+        </div>
 
-    <footer>
-      <button id="settingsBtn" class="btn-link">Settings</button>
-      <button id="clearDataBtn" class="btn-link text-danger">Clear All Data</button>
-    </footer>
+        <button id="viewLibraryBtn" class="btn btn-primary btn-large" style="display: none;">
+          View Your Library
+        </button>
+      </main>
+    </div>
+
+    <!-- SCREEN 3: LIBRARY SCREEN -->
+    <div id="libraryScreen" class="screen" style="display: none;">
+      <header class="library-header">
+        <h1>Your Knowledge Hub</h1>
+        <button id="refreshBtn" class="btn-icon-only">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+            <path d="M17.5 10C17.5 14.1421 14.1421 17.5 10 17.5C5.85786 17.5 2.5 14.1421 2.5 10C2.5 5.85786 5.85786 2.5 10 2.5C12.5 2.5 14.5 4 15.5 6M15.5 2.5V6H12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </header>
+
+      <main class="library-main">
+        <!-- Suggested Labels Section -->
+        <section class="library-section">
+          <div class="section-header">
+            <h2>Suggested Labels</h2>
+            <span class="badge" id="suggestedBadge">0</span>
+          </div>
+          <div class="list-container" id="suggestedList">
+            <div class="empty-state">
+              <p>No suggestions yet. Import chats and run AI processing to get started.</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Your Library Section -->
+        <section class="library-section">
+          <div class="section-header">
+            <h2>Your Library</h2>
+            <button id="createLabelBtn" class="btn btn-small">
+              <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+                <path d="M8 3V13M3 8H13" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              Create New
+            </button>
+          </div>
+          <div class="list-container" id="labelList">
+            <div class="empty-state">
+              <p>Your curated labels will appear here.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="library-footer">
+        <button id="settingsBtn" class="btn-link">Settings</button>
+        <button id="clearDataBtn" class="btn-link text-danger">Clear All Data</button>
+      </footer>
+    </div>
+
   </div>
 
   <script src="popup.js"></script>
