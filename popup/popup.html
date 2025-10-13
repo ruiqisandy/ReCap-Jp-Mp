@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI-ReCap</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>AI-ReCap</h1>
+      <p class="tagline">Your AI Knowledge Hub</p>
+    </header>
+
+    <main>
+      <!-- Status Section -->
+      <section class="status-section">
+        <div class="status-item">
+          <span class="status-label">Total Chats:</span>
+          <span class="status-value" id="chatCount">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">Labels:</span>
+          <span class="status-value" id="labelCount">-</span>
+        </div>
+        <div class="status-item">
+          <span class="status-label">AI Status:</span>
+          <span class="status-value" id="aiStatus">Checking...</span>
+        </div>
+      </section>
+
+      <!-- Action Buttons -->
+      <section class="actions-section">
+        <button id="importBtn" class="btn btn-primary">
+          Import Chats
+        </button>
+        <button id="processBtn" class="btn btn-secondary">
+          Process with AI
+        </button>
+        <button id="viewLabelsBtn" class="btn btn-secondary">
+          View Labels
+        </button>
+      </section>
+
+      <!-- Import Status -->
+      <section class="import-status" id="importStatus" style="display: none;">
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <p class="status-text" id="statusText">Processing...</p>
+      </section>
+
+      <!-- Quick Info -->
+      <section class="info-section">
+        <p class="info-text">
+          <strong>Module 1 Setup Complete!</strong><br>
+          Foundation ready for chat import and AI processing.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <button id="settingsBtn" class="btn-link">Settings</button>
+      <button id="clearDataBtn" class="btn-link text-danger">Clear All Data</button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
