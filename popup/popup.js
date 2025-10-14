@@ -430,7 +430,7 @@ async function extractConversationInNewTab(conversation) {
     // Send message to content script to extract conversation
     // IMPORTANT: This is an async operation that may take 10+ seconds
     // Add timeout to prevent hanging indefinitely
-    const EXTRACTION_TIMEOUT = 15000; // 15 seconds max per extraction
+    const EXTRACTION_TIMEOUT = 20000; // 20 seconds max per extraction (increased to handle slow pages)
 
     const response = await Promise.race([
       chrome.tabs.sendMessage(tabId, {

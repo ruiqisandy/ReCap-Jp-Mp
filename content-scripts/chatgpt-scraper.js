@@ -205,15 +205,36 @@
     try {
       console.log('[ChatGPT Scraper] Extracting current conversation...');
 
-      // Wait for conversation turns to load
-      await waitForElement('[data-testid^="conversation-turn-"]', 10000);
+      // Wait for conversation turns to load (with extended timeout)
+      // Some conversations may take longer to load
+      try {
+        await waitForElement('[data-testid^="conversation-turn-"]', 12000);
+      } catch (error) {
+        console.warn('[ChatGPT Scraper] Timeout waiting for conversation turns, will try to extract anyway:', error.message);
+        // Don't throw - try to extract what we can
+      }
 
       // Small delay to ensure all content is rendered
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      // Extract title
-      const titleElement = document.querySelector('h1');
-      const title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+      // Wait for title to be updated (ChatGPT updates it dynamically)
+      // Give it some time, but don't wait too long
+      let title = 'Untitled Conversation';
+      const startTime = Date.now();
+      const titleTimeout = 3000; // Wait max 3 seconds for title
+
+      while (Date.now() - startTime < titleTimeout) {
+        const currentTitle = document.title?.trim();
+        // Check if title is set and is not the default "ChatGPT" or empty
+        if (currentTitle && currentTitle !== 'ChatGPT' && currentTitle.length > 0) {
+          title = currentTitle;
+          break;
+        }
+        // Wait a bit before checking again
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      console.log('[ChatGPT Scraper] Extracted title:', title);
 
       // Extract URL and ID
       const url = window.location.href;
