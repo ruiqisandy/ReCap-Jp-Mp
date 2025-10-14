@@ -123,9 +123,19 @@
       // Small delay to ensure all content is rendered
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      // Extract title from page or use default
+      // Extract title - try h1 first, then generate from content
+      let title = 'Untitled Conversation';
+
+      console.log('[Claude Scraper] Looking for title...');
+
       const titleElement = document.querySelector('h1');
-      const title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+      if (titleElement && titleElement.textContent) {
+        const extractedTitle = titleElement.textContent.trim();
+        if (extractedTitle && extractedTitle !== 'Claude' && extractedTitle.length > 3) {
+          title = extractedTitle;
+          console.log('[Claude Scraper] ✓ Found title from h1:', title);
+        }
+      }
 
       // Extract URL and ID
       const url = window.location.href;
@@ -139,6 +149,16 @@
       const rawContent = mainContent?.innerText?.trim() || '';
 
       console.log('[Claude Scraper] Extracted conversation content:', rawContent.length, 'characters');
+
+      // If no title found, generate from first part of content
+      if (title === 'Untitled Conversation' && rawContent.length > 0) {
+        console.log('[Claude Scraper] No h1, generating title from content...');
+        // Take first line or first 60 chars, whichever is shorter
+        const firstLine = rawContent.split('\n')[0].trim();
+        title = firstLine.substring(0, 60);
+        if (firstLine.length > 60) title += '...';
+        console.log('[Claude Scraper] ✓ Generated title:', title);
+      }
 
       // For Claude, we'll store the entire conversation as one message since
       // individual message separation is unreliable with their current DOM structure

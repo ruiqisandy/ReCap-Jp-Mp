@@ -57,6 +57,9 @@ const createLabelBtn = document.getElementById('createLabelBtn');
 const labelList = document.getElementById('labelList');
 const settingsBtn = document.getElementById('settingsBtn');
 const clearDataBtn = document.getElementById('clearDataBtn');
+const allChatsBadge = document.getElementById('allChatsBadge');
+const chatList = document.getElementById('chatList');
+const filterButtons = document.querySelectorAll('.filter-btn');
 
 /**
  * Initialize popup
@@ -188,6 +191,19 @@ function setupEventListeners() {
   createLabelBtn.addEventListener('click', handleCreateLabel);
   settingsBtn.addEventListener('click', handleSettings);
   clearDataBtn.addEventListener('click', handleClearData);
+
+  // Chat filter buttons
+  filterButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Remove active class from all buttons
+      filterButtons.forEach(b => b.classList.remove('active'));
+      // Add active class to clicked button
+      btn.classList.add('active');
+      // Filter chats
+      const platform = btn.dataset.platform;
+      filterChats(platform);
+    });
+  });
 }
 
 /**
@@ -405,15 +421,31 @@ async function extractConversationInNewTab(conversation) {
     await delay(DYNAMIC_CONTENT_DELAY);
 
     // Inject content script
-    await injectContentScript(tabId, conversation.platform);
+    const injected = await injectContentScript(tabId, conversation.platform);
+    if (!injected) {
+      console.warn(`[Popup] Skipping ${conversation.title} - injection failed`);
+      return null;
+    }
 
     // Send message to content script to extract conversation
-    const response = await chrome.tabs.sendMessage(tabId, {
-      action: 'extractCurrentConversation'
+    // IMPORTANT: This is an async operation that may take 10+ seconds
+    // Add timeout to prevent hanging indefinitely
+    const EXTRACTION_TIMEOUT = 15000; // 15 seconds max per extraction
+
+    const response = await Promise.race([
+      chrome.tabs.sendMessage(tabId, {
+        action: 'extractCurrentConversation'
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Extraction timeout')), EXTRACTION_TIMEOUT)
+      )
+    ]).catch(error => {
+      console.warn(`[Popup] Extraction error for ${conversation.title}:`, error.message);
+      return null;
     });
 
     if (response && response.success) {
-      console.log(`[Popup] Extracted: ${conversation.title}`);
+      console.log(`[Popup] Extracted: ${response.data.title}`);
       return response.data;
     } else {
       console.warn(`[Popup] Failed to extract: ${conversation.title}`);
@@ -489,9 +521,12 @@ async function injectContentScript(tabId, platform) {
     await delay(500);
 
     console.log(`[Popup] Content script injected successfully`);
+    return true;
   } catch (error) {
-    console.error(`[Popup] Error injecting content script:`, error);
-    throw error;
+    // Error pages, invalid tabs, etc. - just log and return false
+    // The caller will handle this gracefully
+    console.warn(`[Popup] Could not inject content script into tab ${tabId}:`, error.message);
+    return false;
   }
 }
 
@@ -605,9 +640,92 @@ async function loadLibrary() {
       renderLabels(labels);
     }
 
+    // Load all chats
+    await loadAllChats();
+
   } catch (error) {
     console.error('[Popup] Error loading library:', error);
   }
+}
+
+/**
+ * Load all chats
+ */
+async function loadAllChats() {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
+
+    if (response.success) {
+      const chats = Object.values(response.data);
+
+      // Sort by date (newest first)
+      chats.sort((a, b) => b.date - a.date);
+
+      // Update badge
+      allChatsBadge.textContent = chats.length;
+
+      // Store chats globally for filtering
+      window.allChats = chats;
+
+      // Render all chats initially
+      renderChatList(chats);
+    }
+  } catch (error) {
+    console.error('[Popup] Error loading chats:', error);
+  }
+}
+
+/**
+ * Render chat list
+ * @param {Array} chats - Array of chat objects
+ */
+function renderChatList(chats) {
+  if (chats.length === 0) {
+    chatList.innerHTML = '<div class="empty-state"><p>No conversations yet. Import chats to see them here.</p></div>';
+    return;
+  }
+
+  chatList.innerHTML = chats.map(chat => {
+    const messageCount = chat.messages ? chat.messages.length : 0;
+    const date = new Date(chat.date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+
+    return `
+      <div class="chat-item" data-id="${chat.id}" data-platform="${chat.platform}">
+        <div class="chat-item-header">
+          <span class="chat-platform-badge ${chat.platform}">${PLATFORMS[chat.platform].name}</span>
+          <span class="chat-item-title">${chat.title}</span>
+        </div>
+        <div class="chat-item-meta">
+          <span class="chat-item-messages">${messageCount} messages</span>
+          <span class="chat-item-date">${date}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/**
+ * Filter chats by platform
+ * @param {string} platform - Platform name or 'all'
+ */
+function filterChats(platform) {
+  if (!window.allChats) {
+    return;
+  }
+
+  let filteredChats;
+
+  if (platform === 'all') {
+    filteredChats = window.allChats;
+  } else {
+    filteredChats = window.allChats.filter(chat => chat.platform === platform);
+  }
+
+  renderChatList(filteredChats);
 }
 
 /**

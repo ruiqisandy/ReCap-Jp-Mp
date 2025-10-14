@@ -163,6 +163,38 @@
             </div>
           </div>
         </section>
+
+        <!-- All Conversations Section (NEW) -->
+        <section class="library-section">
+          <div class="section-header">
+            <h2>All Conversations</h2>
+            <span class="badge" id="allChatsBadge">0</span>
+          </div>
+
+          <!-- Platform Filters -->
+          <div class="filter-buttons">
+            <button class="filter-btn active" data-platform="all">All</button>
+            <button class="filter-btn" data-platform="chatgpt">
+              <span class="platform-dot chatgpt"></span>
+              ChatGPT
+            </button>
+            <button class="filter-btn" data-platform="claude">
+              <span class="platform-dot claude"></span>
+              Claude
+            </button>
+            <button class="filter-btn" data-platform="gemini">
+              <span class="platform-dot gemini"></span>
+              Gemini
+            </button>
+          </div>
+
+          <!-- Chat List Container -->
+          <div class="list-container" id="chatList">
+            <div class="empty-state">
+              <p>No conversations yet. Import chats to see them here.</p>
+            </div>
+          </div>
+        </section>
       </main>
 
       <footer class="library-footer">

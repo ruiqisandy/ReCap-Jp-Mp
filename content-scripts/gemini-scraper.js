@@ -160,9 +160,45 @@
       // Small delay to ensure all content is rendered
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      // Extract title from page
-      const titleElement = document.querySelector('h1, [role="heading"]');
-      const title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+      // Extract title from page - try multiple approaches
+      let title = 'Untitled Conversation';
+
+      const titleSelectors = [
+        'h1',
+        '[role="heading"]',
+        '.chat-title',
+        '[class*="conversation-title"]'
+      ];
+
+      for (const selector of titleSelectors) {
+        const titleElement = document.querySelector(selector);
+        if (titleElement && titleElement.textContent) {
+          const extractedTitle = titleElement.textContent.trim();
+          // Filter out generic Gemini UI text
+          if (extractedTitle &&
+              extractedTitle !== 'Gemini' &&
+              extractedTitle !== 'Conversation with Gemini' &&
+              extractedTitle !== 'Recent' &&
+              extractedTitle.length > 0) {
+            title = extractedTitle;
+            console.log('[Gemini Scraper] Found title:', title);
+            break;
+          }
+        }
+      }
+
+      // If still no title, generate from first user message
+      if (title === 'Untitled Conversation' && messageElements.length > 0) {
+        for (const messageElement of messageElements) {
+          const text = messageElement.innerText?.trim() || '';
+          // Look for user message (usually first or alternating)
+          if (text.length > 10) {
+            title = text.substring(0, 50) + (text.length > 50 ? '...' : '');
+            console.log('[Gemini Scraper] Generated title from first message:', title);
+            break;
+          }
+        }
+      }
 
       // Extract URL and ID
       const url = window.location.href;
