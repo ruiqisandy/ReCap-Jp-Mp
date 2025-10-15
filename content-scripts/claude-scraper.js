@@ -62,20 +62,26 @@
 
     // Claude raw content structure:
     // 1. Title\nShare (first section, skip it)
-    // 2. \nMY\n marks start of each user question
+    // 2. \n[INITIALS]\n marks start of each user question (e.g., \nMY\n, \nJD\n, \nAB\n)
     // 3. \nRetry\n marks end of each assistant response
     // 4. Last section is boilerplate: "Claude can make mistakes..."
 
-    // Remove the title section (everything before first "\nMY\n")
-    const firstMYIndex = rawContent.indexOf('\nMY\n');
-    if (firstMYIndex === -1) {
-      // No messages found, return empty
-      console.log('[Claude Scraper] No messages found (no MY marker)');
+    // Find user initial pattern (2 uppercase letters between newlines)
+    const userInitialPattern = /\n[A-Z]{2,3}\n/;
+    const firstInitialMatch = rawContent.match(userInitialPattern);
+
+    if (!firstInitialMatch) {
+      // No user messages found, return empty
+      console.log('[Claude Scraper] No messages found (no user initial marker)');
       return messages;
     }
 
+    const firstInitialIndex = rawContent.indexOf(firstInitialMatch[0]);
+    const detectedInitials = firstInitialMatch[0].trim(); // e.g., "MY", "JD", "AB"
+    console.log('[Claude Scraper] Detected user initials:', detectedInitials);
+
     // Get content after title (skip "Title\nShare" section)
-    let contentAfterTitle = rawContent.substring(firstMYIndex);
+    let contentAfterTitle = rawContent.substring(firstInitialIndex);
 
     // Remove boilerplate at the end
     const boilerplatePatterns = [
@@ -93,8 +99,9 @@
       }
     }
 
-    // Split by "\nMY\n" to get conversation pairs
-    const conversationPairs = contentAfterTitle.split(/\nMY\n/).filter(s => s.trim());
+    // Split by the detected user initial pattern to get conversation pairs
+    const initialSplitPattern = new RegExp(`\\n${detectedInitials}\\n`, 'g');
+    const conversationPairs = contentAfterTitle.split(initialSplitPattern).filter(s => s.trim());
 
     for (const pair of conversationPairs) {
       // Each pair contains: user question + "\nRetry\n" + assistant response
