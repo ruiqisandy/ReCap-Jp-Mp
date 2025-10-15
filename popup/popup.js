@@ -338,11 +338,13 @@ async function importFromPlatformParallel(platform, onProgress) {
 
     // Step 4: Process each batch in parallel
     const allChats = [];
+    const allFailedConversations = [];
     let processed = 0;
 
     for (const batch of batches) {
-      const chats = await processBatchParallel(batch);
-      allChats.push(...chats);
+      const { successfulChats, failedConversations } = await processBatchParallel(batch);
+      allChats.push(...successfulChats);
+      allFailedConversations.push(...failedConversations);
       processed += batch.length;
 
       // Update progress
@@ -354,7 +356,14 @@ async function importFromPlatformParallel(platform, onProgress) {
       }
     }
 
-    // Step 5: Batch save all chats
+    // Step 5: Retry failed conversations automatically
+    if (allFailedConversations.length > 0) {
+      console.log(`[Popup] Retrying ${allFailedConversations.length} failed conversations...`);
+      const retriedChats = await retryFailedConversations(allFailedConversations);
+      allChats.push(...retriedChats);
+    }
+
+    // Step 6: Batch save all chats
     if (allChats.length > 0) {
       console.log(`[Popup] Batch saving ${allChats.length} chats from ${platform}`);
       await chrome.runtime.sendMessage({
@@ -374,7 +383,7 @@ async function importFromPlatformParallel(platform, onProgress) {
 /**
  * Process batch of conversations in parallel
  * @param {Array} conversationBatch - Array of conversation metadata
- * @returns {Promise<Array>} Array of extracted conversations
+ * @returns {Promise<Object>} Object with successfulChats and failedConversations arrays
  */
 async function processBatchParallel(conversationBatch) {
   console.log(`[Popup] Processing batch of ${conversationBatch.length} conversations`);
@@ -385,14 +394,115 @@ async function processBatchParallel(conversationBatch) {
   // Use Promise.allSettled to handle failures gracefully
   const results = await Promise.allSettled(promises);
 
-  // Filter successful extractions
-  const successfulChats = results
-    .filter(result => result.status === 'fulfilled' && result.value !== null)
-    .map(result => result.value);
+  // Separate successful and failed extractions
+  const successfulChats = [];
+  const failedConversations = [];
+
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled' && result.value !== null) {
+      successfulChats.push(result.value);
+    } else {
+      // Track the failed conversation metadata for retry
+      failedConversations.push(conversationBatch[index]);
+    }
+  });
 
   console.log(`[Popup] Batch complete: ${successfulChats.length}/${conversationBatch.length} successful`);
 
-  return successfulChats;
+  return { successfulChats, failedConversations };
+}
+
+/**
+ * Retry failed conversations sequentially with longer timeouts
+ * @param {Array} failedConversations - Array of failed conversation metadata
+ * @returns {Promise<Array>} Array of successfully recovered conversations
+ */
+async function retryFailedConversations(failedConversations) {
+  if (failedConversations.length === 0) {
+    return [];
+  }
+
+  console.log(`[Popup] Retrying ${failedConversations.length} failed conversations (sequential, longer timeouts)...`);
+
+  const retryConfig = {
+    TAB_TIMEOUT: 10000,           // 10s timeout for retry
+    DYNAMIC_CONTENT_DELAY: 4000,  // 4s delay for retry
+    EXTRACTION_TIMEOUT: 60000     // 60s extraction timeout for retry
+  };
+
+  const retriedChats = [];
+
+  // Process sequentially to avoid overwhelming the browser
+  for (const conversation of failedConversations) {
+    let tabId = null;
+
+    try {
+      console.log(`[Popup] Retrying: ${conversation.title}`);
+
+      // Create background tab
+      const tab = await chrome.tabs.create({
+        url: conversation.url,
+        active: false
+      });
+
+      tabId = tab.id;
+
+      // Wait for tab to load with longer timeout
+      await waitForTabLoad(tabId, retryConfig.TAB_TIMEOUT);
+
+      // Wait longer for dynamic content
+      await delay(retryConfig.DYNAMIC_CONTENT_DELAY);
+
+      // Inject content script
+      const injected = await injectContentScript(tabId, conversation.platform);
+      if (!injected) {
+        console.warn(`[Popup] Retry failed - injection failed: ${conversation.title}`);
+        continue;
+      }
+
+      // Extract with longer timeout
+      const response = await Promise.race([
+        chrome.tabs.sendMessage(tabId, {
+          action: 'extractCurrentConversation'
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Extraction timeout')), retryConfig.EXTRACTION_TIMEOUT)
+        )
+      ]).catch(error => {
+        console.warn(`[Popup] Retry extraction error for ${conversation.title}:`, error.message);
+        return null;
+      });
+
+      if (response && response.success) {
+        console.log(`[Popup] Retry successful: ${response.data.title}`);
+        retriedChats.push(response.data);
+      } else {
+        console.warn(`[Popup] Retry failed: ${conversation.title}`);
+      }
+
+    } catch (error) {
+      console.error(`[Popup] Retry error for ${conversation.title}:`, error);
+    } finally {
+      // Close tab
+      if (tabId) {
+        try {
+          await Promise.race([
+            chrome.tabs.remove(tabId),
+            new Promise((resolve) => setTimeout(resolve, 2000))
+          ]);
+        } catch (error) {
+          console.warn(`[Popup] Error closing retry tab ${tabId}:`, error);
+        }
+      }
+
+      // Small delay between retries
+      await delay(1000);
+    }
+  }
+
+  console.log(`[Popup] Retry complete: ${retriedChats.length}/${failedConversations.length} recovered`);
+
+  return retriedChats;
 }
 
 /**
