@@ -6,10 +6,10 @@
 console.log('[Popup] Script loaded - Module 2');
 
 // Configuration constants
-const MAX_PARALLEL_TABS = 6;  // Process 6 conversations simultaneously
-const TAB_TIMEOUT = 3000;      // 3 second timeout per tab
-const BATCH_DELAY = 500;       // Delay between batches
-const DYNAMIC_CONTENT_DELAY = 800;  // Wait after page load for dynamic content
+const MAX_PARALLEL_TABS = 6;  // Process 6 conversations simultaneously (balanced speed vs stability)
+const TAB_TIMEOUT = 6000;      // 6 second timeout per tab (increased for cross-account imports)
+const BATCH_DELAY = 1000;      // Delay between batches (increased for browser recovery)
+const DYNAMIC_CONTENT_DELAY = 2500;  // Wait after page load for dynamic content (increased for heavy ChatGPT pages)
 
 // Platform configurations
 const PLATFORMS = {
@@ -430,7 +430,7 @@ async function extractConversationInNewTab(conversation) {
     // Send message to content script to extract conversation
     // IMPORTANT: This is an async operation that may take 10+ seconds
     // Add timeout to prevent hanging indefinitely
-    const EXTRACTION_TIMEOUT = 20000; // 20 seconds max per extraction (increased to handle slow pages)
+    const EXTRACTION_TIMEOUT = 30000; // 30 seconds max per extraction (increased for large conversations)
 
     const response = await Promise.race([
       chrome.tabs.sendMessage(tabId, {
@@ -456,10 +456,14 @@ async function extractConversationInNewTab(conversation) {
     console.error(`[Popup] Error extracting conversation:`, error);
     return null;
   } finally {
-    // ALWAYS close tab in finally block
+    // ALWAYS close tab in finally block with timeout to prevent hanging
     if (tabId) {
       try {
-        await chrome.tabs.remove(tabId);
+        // Wrap tab removal in timeout to prevent batch from hanging
+        await Promise.race([
+          chrome.tabs.remove(tabId),
+          new Promise((resolve) => setTimeout(resolve, 2000)) // 2s timeout for tab removal
+        ]);
       } catch (error) {
         console.warn(`[Popup] Error closing tab ${tabId}:`, error);
       }
@@ -502,30 +506,49 @@ function waitForTabLoad(tabId, timeout) {
 }
 
 /**
- * Inject content script into a tab
+ * Inject content script into a tab with retry logic
  * @param {number} tabId - Tab ID
  * @param {string} platform - Platform name
- * @returns {Promise<void>}
+ * @param {number} retryCount - Current retry attempt (internal use)
+ * @returns {Promise<boolean>} True if successful, false otherwise
  */
-async function injectContentScript(tabId, platform) {
+async function injectContentScript(tabId, platform, retryCount = 0) {
+  const MAX_RETRIES = 1;
+  const RETRY_DELAY = 1000;
+
   try {
     const scriptFile = `content-scripts/${platform}-scraper.js`;
-    console.log(`[Popup] Injecting ${scriptFile} into tab ${tabId}`);
+    console.log(`[Popup] Injecting ${scriptFile} into tab ${tabId}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`);
 
     await chrome.scripting.executeScript({
       target: { tabId },
       files: [scriptFile]
     });
 
-    // Wait a bit for script to initialize
-    await delay(500);
+    // Wait a bit for script to initialize (increased for stability)
+    await delay(800);
 
     console.log(`[Popup] Content script injected successfully`);
     return true;
   } catch (error) {
-    // Error pages, invalid tabs, etc. - just log and return false
-    // The caller will handle this gracefully
-    console.warn(`[Popup] Could not inject content script into tab ${tabId}:`, error.message);
+    const errorMsg = error.message || String(error);
+
+    // Check if this is a transient error that might succeed on retry
+    const isTransientError =
+      errorMsg.includes('Frame') ||
+      errorMsg.includes('was removed') ||
+      errorMsg.includes('Connection') ||
+      errorMsg.includes('Receiving end does not exist');
+
+    // Retry logic for transient errors
+    if (isTransientError && retryCount < MAX_RETRIES) {
+      console.warn(`[Popup] Transient injection error, retrying in ${RETRY_DELAY}ms...`);
+      await delay(RETRY_DELAY);
+      return injectContentScript(tabId, platform, retryCount + 1);
+    }
+
+    // Error pages, invalid tabs, permanent errors - log and return false
+    console.warn(`[Popup] Could not inject content script into tab ${tabId}:`, errorMsg);
     return false;
   }
 }
