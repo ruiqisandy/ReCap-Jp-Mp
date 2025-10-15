@@ -250,18 +250,29 @@
 
       for (const turnElement of turnElements) {
         try {
-          // Determine role from data-testid
-          const testId = turnElement.getAttribute('data-testid');
-          const isUser = testId && testId.includes('user');
-          const role = isUser ? 'user' : 'assistant';
-
-          // Extract content - try markdown first, fallback to innerText
+          // Extract content first - try markdown first, fallback to innerText
           let content = '';
           const markdownElement = turnElement.querySelector('.markdown');
           if (markdownElement) {
             content = markdownElement.innerText?.trim() || '';
           } else {
             content = turnElement.innerText?.trim() || '';
+          }
+
+          if (!content) {
+            continue; // Skip empty messages
+          }
+
+          // Determine role from data-testid first
+          const testId = turnElement.getAttribute('data-testid');
+          let role = (testId && testId.includes('user')) ? 'user' : 'assistant';
+
+          // Fallback: Check content for "You said:" pattern (more reliable)
+          // ChatGPT shows user messages with "You said:\n" prefix
+          if (content.startsWith('You said:\n')) {
+            role = 'user';
+            // Remove the "You said:\n" prefix to get clean user content
+            content = content.substring(10).trim();
           }
 
           if (content) {
