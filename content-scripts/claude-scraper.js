@@ -243,7 +243,7 @@
       // Get main content area (Claude's new structure doesn't use data-testid attributes)
       const mainContent = document.querySelector('div.w-full.relative.min-w-0');
 
-      // Extract all text content from main area
+      // Extract all text content from main area (for backward compatibility)
       const rawContent = mainContent?.innerText?.trim() || '';
 
       console.log('[Claude Scraper] Extracted conversation content:', rawContent.length, 'characters');
@@ -258,9 +258,62 @@
         console.log('[Claude Scraper] ✓ Generated title:', title);
       }
 
-      // Parse individual messages from rawContent
-      // Claude's innerText includes "MY" markers for user messages and "Retry" separators
-      const messages = parseClaudeMessages(rawContent);
+      // Parse individual messages using DOM structure (more reliable than text parsing)
+      // Claude uses specific class names to identify user vs assistant messages
+      const messages = [];
+
+      if (mainContent) {
+        // Query all message elements - both user and assistant
+        const userMessages = mainContent.querySelectorAll('[class*="font-user-message"]');
+        const assistantMessages = mainContent.querySelectorAll('[class*="font-claude-response"]');
+
+        console.log('[Claude Scraper] Found', userMessages.length, 'user messages and', assistantMessages.length, 'assistant messages via DOM');
+
+        // Combine and sort by DOM position to preserve conversation order
+        const allMessageElements = [
+          ...Array.from(userMessages).map(el => ({ el, role: 'user' })),
+          ...Array.from(assistantMessages).map(el => ({ el, role: 'assistant' }))
+        ];
+
+        // Sort by position in document
+        allMessageElements.sort((a, b) => {
+          const position = a.el.compareDocumentPosition(b.el);
+          if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+            return -1; // a comes before b
+          } else if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+            return 1; // b comes before a
+          }
+          return 0;
+        });
+
+        // Extract content from each message
+        for (const { el, role } of allMessageElements) {
+          const content = el.innerText?.trim();
+
+          // Filter out boilerplate content
+          const isBoilerplate =
+            !content ||
+            content.length === 0 ||
+            content === 'Share' ||
+            content === 'Retry' ||
+            content.startsWith('Claude can make mistakes') ||
+            content.startsWith('Claude does not have the ability') ||
+            /^(Sonnet|Claude|Opus|Haiku)\s+\d+(\.\d+)?$/.test(content); // Model version like "Sonnet 4.5"
+
+          if (!isBoilerplate) {
+            messages.push({ role, content });
+          }
+        }
+
+        console.log('[Claude Scraper] Parsed', messages.length, 'individual messages from DOM');
+      }
+
+      // Fallback: if DOM parsing failed, try text parsing
+      if (messages.length === 0 && rawContent.length > 0) {
+        console.log('[Claude Scraper] DOM parsing found no messages, falling back to text parsing');
+        const fallbackMessages = parseClaudeMessages(rawContent);
+        messages.push(...fallbackMessages);
+      }
 
       // Create conversation object
       const conversation = {
