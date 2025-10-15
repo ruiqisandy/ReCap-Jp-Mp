@@ -49,6 +49,97 @@
   }
 
   /**
+   * Parse Claude messages from raw content text
+   * @param {string} rawContent - Raw conversation text
+   * @returns {Array} Array of message objects with role and content
+   */
+  function parseClaudeMessages(rawContent) {
+    const messages = [];
+
+    if (!rawContent || rawContent.length === 0) {
+      return messages;
+    }
+
+    // Claude raw content structure:
+    // 1. Title\nShare (first section, skip it)
+    // 2. \nMY\n marks start of each user question
+    // 3. \nRetry\n marks end of each assistant response
+    // 4. Last section is boilerplate: "Claude can make mistakes..."
+
+    // Remove the title section (everything before first "\nMY\n")
+    const firstMYIndex = rawContent.indexOf('\nMY\n');
+    if (firstMYIndex === -1) {
+      // No messages found, return empty
+      console.log('[Claude Scraper] No messages found (no MY marker)');
+      return messages;
+    }
+
+    // Get content after title (skip "Title\nShare" section)
+    let contentAfterTitle = rawContent.substring(firstMYIndex);
+
+    // Remove boilerplate at the end
+    const boilerplatePatterns = [
+      'Claude can make mistakes. Please double-check responses.',
+      'Claude does not have the ability to run the code it generates yet.',
+      /Sonnet \d+\.\d+$/,
+      /Claude \d+\.\d+$/
+    ];
+
+    for (const pattern of boilerplatePatterns) {
+      if (typeof pattern === 'string') {
+        contentAfterTitle = contentAfterTitle.replace(pattern, '').trim();
+      } else {
+        contentAfterTitle = contentAfterTitle.replace(pattern, '').trim();
+      }
+    }
+
+    // Split by "\nMY\n" to get conversation pairs
+    const conversationPairs = contentAfterTitle.split(/\nMY\n/).filter(s => s.trim());
+
+    for (const pair of conversationPairs) {
+      // Each pair contains: user question + "\nRetry\n" + assistant response
+      const retryIndex = pair.indexOf('\nRetry\n');
+
+      if (retryIndex === -1) {
+        // No Retry found, treat entire content as user message
+        const userContent = pair.trim();
+        if (userContent && userContent !== 'Share') {
+          messages.push({
+            role: 'user',
+            content: userContent
+          });
+        }
+      } else {
+        // Split by Retry
+        const userContent = pair.substring(0, retryIndex).trim();
+        const assistantContent = pair.substring(retryIndex + 7).trim(); // +7 for "\nRetry\n" length
+
+        // Add user message
+        if (userContent && userContent !== 'Share') {
+          messages.push({
+            role: 'user',
+            content: userContent
+          });
+        }
+
+        // Add assistant message (skip if it's boilerplate)
+        if (assistantContent &&
+            assistantContent !== 'Share' &&
+            !assistantContent.startsWith('Claude can make mistakes') &&
+            !assistantContent.startsWith('Claude does not have the ability')) {
+          messages.push({
+            role: 'assistant',
+            content: assistantContent
+          });
+        }
+      }
+    }
+
+    console.log('[Claude Scraper] Parsed', messages.length, 'individual messages');
+    return messages;
+  }
+
+  /**
    * Extract conversation list from sidebar
    * @returns {Promise<Array>} Array of conversation metadata objects
    */
@@ -160,14 +251,9 @@
         console.log('[Claude Scraper] ✓ Generated title:', title);
       }
 
-      // For Claude, we'll store the entire conversation as one message since
-      // individual message separation is unreliable with their current DOM structure
-      const messages = [
-        {
-          role: 'assistant',
-          content: rawContent
-        }
-      ];
+      // Parse individual messages from rawContent
+      // Claude's innerText includes "MY" markers for user messages and "Retry" separators
+      const messages = parseClaudeMessages(rawContent);
 
       // Create conversation object
       const conversation = {
