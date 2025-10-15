@@ -122,6 +122,71 @@
   }
 
   /**
+   * Parse Gemini messages using text-based pattern matching
+   * Fallback method when DOM parsing fails
+   * @param {string} rawContent - Raw conversation text
+   * @returns {Array} Array of message objects with role and content
+   */
+  function parseGeminiMessagesByPattern(rawContent) {
+    const messages = [];
+
+    if (!rawContent || rawContent.length === 0) {
+      return messages;
+    }
+
+    // Split by "Show thinking" pattern which appears after user questions
+    // Pattern: User question + "\nShow thinking\n" + Assistant response
+    const parts = rawContent.split(/\nShow thinking\n/i);
+
+    if (parts.length === 1) {
+      // No "Show thinking" found, try simpler split or return as-is
+      console.log('[Gemini Scraper] No "Show thinking" pattern found');
+      return messages;
+    }
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i].trim();
+
+      if (i === 0) {
+        // First part is user question
+        if (part.length > 0) {
+          messages.push({
+            role: 'user',
+            content: part
+          });
+        }
+      } else {
+        // After "Show thinking": contains assistant response, possibly followed by next user question
+        // Try to find next user question by looking for common patterns
+        const nextUserQuestionMatch = part.match(/\n\n([^]+?)(?=\nShow thinking\n|$)/);
+
+        // First part is assistant response
+        const assistantContent = part.split(/\n\n[A-Z]/)[0].trim();
+        if (assistantContent.length > 0) {
+          messages.push({
+            role: 'assistant',
+            content: assistantContent
+          });
+        }
+
+        // Check if there's a user question after the assistant response
+        if (i < parts.length - 1) {
+          const remainingText = part.substring(assistantContent.length).trim();
+          if (remainingText.length > 0) {
+            messages.push({
+              role: 'user',
+              content: remainingText
+            });
+          }
+        }
+      }
+    }
+
+    console.log('[Gemini Scraper] Parsed', messages.length, 'messages using pattern matching');
+    return messages;
+  }
+
+  /**
    * Extract current conversation content
    * @returns {Promise<Object>} Conversation object with messages
    */
@@ -129,38 +194,116 @@
     try {
       console.log('[Gemini Scraper] Extracting current conversation...');
 
-      // Try multiple possible selectors for message container
-      const possibleSelectors = [
-        '[data-test-id="message"]',
-        '[role="article"]',
-        '.conversation-turn',
-        '[class*="message"]'
-      ];
+      // Extract URL and ID first
+      const url = window.location.href;
+      const idMatch = url.match(/\/app\/([a-zA-Z0-9-]+)/);
+      const id = idMatch ? `gemini-${idMatch[1]}` : `gemini-${Date.now()}`;
 
-      let messageElements = [];
+      const messages = [];
+      let rawContent = '';
 
-      for (const selector of possibleSelectors) {
-        try {
-          await waitForElement(selector, 3000);
-          messageElements = document.querySelectorAll(selector);
-          if (messageElements.length > 0) {
-            console.log('[Gemini Scraper] Found messages with selector:', selector);
-            break;
+      // PRIMARY APPROACH: DOM-based parsing using specific selectors
+      console.log('[Gemini Scraper] Attempting DOM-based message extraction...');
+
+      // Wait for message content to load - try to wait for either user or assistant messages
+      try {
+        await Promise.race([
+          waitForElement('[id^="user-query-content-"]', 3000),
+          waitForElement('[id^="message-content-id-r_"]', 3000)
+        ]);
+      } catch (error) {
+        console.log('[Gemini Scraper] Timeout waiting for specific message elements');
+      }
+
+      // Additional delay to ensure all content is rendered
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      // Try multiple selector patterns for user messages
+      let userMessageElements = document.querySelectorAll('[id^="user-query-content-"]');
+
+      // Also try data attributes or class-based selectors
+      if (userMessageElements.length === 0) {
+        userMessageElements = document.querySelectorAll('[data-test-id*="user"], [class*="user-message"]');
+        console.log('[Gemini Scraper] Trying alternate user message selectors, found:', userMessageElements.length);
+      }
+
+      const assistantMessageElements = document.querySelectorAll('[id^="message-content-id-r_"]');
+
+      console.log('[Gemini Scraper] Found', userMessageElements.length, 'user messages and',
+                  assistantMessageElements.length, 'assistant messages via DOM');
+
+      if (userMessageElements.length > 0 || assistantMessageElements.length > 0) {
+        // Combine and sort by DOM position to preserve conversation order
+        const allMessageElements = [
+          ...Array.from(userMessageElements).map(el => ({ el, role: 'user' })),
+          ...Array.from(assistantMessageElements).map(el => ({ el, role: 'assistant' }))
+        ];
+
+        // Sort by position in document
+        allMessageElements.sort((a, b) => {
+          const position = a.el.compareDocumentPosition(b.el);
+          if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+            return -1; // a comes before b
+          } else if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+            return 1; // b comes before a
           }
-        } catch (error) {
-          console.log('[Gemini Scraper] Selector not found:', selector);
+          return 0;
+        });
+
+        // Extract content from each message
+        for (const { el, role } of allMessageElements) {
+          // For user messages, get from span child; for assistant, get from element itself
+          let content = '';
+
+          if (role === 'user') {
+            // Try multiple extraction methods for user messages
+            const spanElement = el.querySelector('span');
+            if (spanElement) {
+              content = spanElement.innerText?.trim() || spanElement.textContent?.trim() || '';
+            }
+
+            // Fallback: try to get from the element itself
+            if (!content) {
+              content = el.innerText?.trim() || el.textContent?.trim() || '';
+            }
+
+            console.log('[Gemini Scraper] User message content length:', content.length, 'ID:', el.id);
+          } else {
+            content = el.innerText?.trim() || el.textContent?.trim() || '';
+            console.log('[Gemini Scraper] Assistant message content length:', content.length, 'ID:', el.id);
+          }
+
+          if (content && content.length > 0) {
+            messages.push({ role, content });
+            rawContent += `[${role.toUpperCase()}]\n${content}\n\n`;
+          } else {
+            console.warn('[Gemini Scraper] Empty content for', role, 'message, element:', el);
+          }
+        }
+
+        console.log('[Gemini Scraper] DOM parsing extracted', messages.length, 'messages');
+      }
+
+      // FALLBACK APPROACH: If DOM parsing found nothing, try text-based pattern matching
+      if (messages.length === 0) {
+        console.log('[Gemini Scraper] DOM parsing found no messages, trying fallback methods...');
+
+        // Get all content from the page
+        const mainContent = document.querySelector('main') || document.body;
+        rawContent = mainContent?.innerText?.trim() || '';
+
+        // Try pattern-based parsing
+        const patternMessages = parseGeminiMessagesByPattern(rawContent);
+
+        if (patternMessages.length > 0) {
+          messages.push(...patternMessages);
+          console.log('[Gemini Scraper] Pattern parsing extracted', messages.length, 'messages');
+        } else {
+          console.warn('[Gemini Scraper] No messages could be extracted');
         }
       }
 
-      if (messageElements.length === 0) {
-        console.warn('[Gemini Scraper] No message elements found');
-        throw new Error('No messages found in conversation');
-      }
-
-      // Small delay to ensure all content is rendered
-      await new Promise(resolve => setTimeout(resolve, 800));
-
-      // Extract title from page - try multiple approaches
+      // Extract title from page - try multiple approaches (original method restored)
       let title = 'Untitled Conversation';
 
       const titleSelectors = [
@@ -177,6 +320,7 @@
           // Filter out generic Gemini UI text
           if (extractedTitle &&
               extractedTitle !== 'Gemini' &&
+              extractedTitle !== 'Google Gemini' &&
               extractedTitle !== 'Conversation with Gemini' &&
               extractedTitle !== 'Recent' &&
               extractedTitle.length > 0) {
@@ -188,51 +332,11 @@
       }
 
       // If still no title, generate from first user message
-      if (title === 'Untitled Conversation' && messageElements.length > 0) {
-        for (const messageElement of messageElements) {
-          const text = messageElement.innerText?.trim() || '';
-          // Look for user message (usually first or alternating)
-          if (text.length > 10) {
-            title = text.substring(0, 50) + (text.length > 50 ? '...' : '');
-            console.log('[Gemini Scraper] Generated title from first message:', title);
-            break;
-          }
-        }
-      }
-
-      // Extract URL and ID
-      const url = window.location.href;
-      const idMatch = url.match(/\/app\/([a-zA-Z0-9-]+)/);
-      const id = idMatch ? `gemini-${idMatch[1]}` : `gemini-${Date.now()}`;
-
-      console.log('[Gemini Scraper] Found', messageElements.length, 'message elements');
-
-      const messages = [];
-      let rawContent = '';
-
-      for (const messageElement of messageElements) {
-        try {
-          // Try to determine role from context
-          // Gemini typically alternates user/model or has distinguishing attributes
-          const isUserMessage =
-            messageElement.textContent?.toLowerCase().includes('you:') ||
-            messageElement.getAttribute('data-author') === 'user' ||
-            messageElement.classList.contains('user-message');
-
-          const role = isUserMessage ? 'user' : 'assistant';
-
-          // Extract content from innerText
-          let content = messageElement.innerText?.trim() || '';
-
-          // Clean up common prefixes
-          content = content.replace(/^(You:|Model:)\s*/i, '');
-
-          if (content && content.length > 10) { // Filter out very short messages
-            messages.push({ role, content });
-            rawContent += `[${role.toUpperCase()}]\n${content}\n\n`;
-          }
-        } catch (error) {
-          console.error('[Gemini Scraper] Error extracting message:', error);
+      if (title === 'Untitled Conversation' && messages.length > 0) {
+        const firstUserMessage = messages.find(m => m.role === 'user');
+        if (firstUserMessage) {
+          title = firstUserMessage.content.substring(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '');
+          console.log('[Gemini Scraper] Generated title from first user message:', title);
         }
       }
 
