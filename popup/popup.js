@@ -698,6 +698,12 @@ function renderChatList(chats) {
         <div class="chat-item-header">
           <span class="chat-platform-badge ${chat.platform}">${PLATFORMS[chat.platform].name}</span>
           <span class="chat-item-title">${chat.title}</span>
+          <button class="chat-item-link-btn" data-url="${chat.url}" title="Open original chat">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+              <path d="M9 6.5V9.5C9 9.77614 8.77614 10 8.5 10H2.5C2.22386 10 2 9.77614 2 9.5V3.5C2 3.22386 2.22386 3 2.5 3H5.5" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M7 2H10M10 2V5M10 2L6 6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
         </div>
         <div class="chat-item-meta">
           <span class="chat-item-messages">${messageCount} messages</span>
@@ -706,6 +712,18 @@ function renderChatList(chats) {
       </div>
     `;
   }).join('');
+
+  // Add event listeners for "View Original" buttons
+  const linkButtons = chatList.querySelectorAll('.chat-item-link-btn');
+  linkButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent chat item click
+      const url = btn.getAttribute('data-url');
+      if (url) {
+        chrome.tabs.create({ url, active: true });
+      }
+    });
+  });
 }
 
 /**

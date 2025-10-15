@@ -327,6 +327,13 @@ body {
   gap: 8px;
 }
 
+/* Scrollable container for chat list */
+#chatList {
+  max-height: 350px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .empty-state {
   padding: 32px 16px;
   text-align: center;
@@ -668,6 +675,35 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.chat-item-link-btn {
+  background: #e0e7ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 5px;
+  padding: 4px;
+  color: #4338ca;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+}
+
+.chat-item-link-btn:hover {
+  background: #4338ca;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(67, 56, 202, 0.2);
+}
+
+.chat-item-link-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* ========================================
