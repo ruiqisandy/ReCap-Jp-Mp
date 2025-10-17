@@ -1137,11 +1137,26 @@ function renderSuggestedLabels(labels) {
         <span class="badge-small">${label.chatIds.length} chats</span>
       </div>
       <div class="label-actions">
-        <button class="btn btn-small btn-accept" onclick="acceptLabel('${label.id}')">Accept</button>
-        <button class="btn btn-small btn-dismiss" onclick="dismissLabel('${label.id}')">Dismiss</button>
+        <button class="btn btn-small btn-accept" data-label-id="${label.id}">Accept</button>
+        <button class="btn btn-small btn-dismiss" data-label-id="${label.id}">Dismiss</button>
       </div>
     </div>
   `).join('');
+
+  // Add event listeners for accept/dismiss buttons
+  suggestedList.querySelectorAll('.btn-accept').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const labelId = btn.getAttribute('data-label-id');
+      acceptLabel(labelId);
+    });
+  });
+
+  suggestedList.querySelectorAll('.btn-dismiss').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const labelId = btn.getAttribute('data-label-id');
+      dismissLabel(labelId);
+    });
+  });
 }
 
 /**
