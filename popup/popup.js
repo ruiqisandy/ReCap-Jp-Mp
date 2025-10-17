@@ -1591,12 +1591,14 @@ async function handleGenerateLabelSummary() {
     }
 
     // Show loading state
-    summaryContent.innerHTML = `<p class="summary-placeholder">Generating aggregated summary from ${chatSummaries.length} conversations...</p>`;
+    summaryContent.innerHTML = `<p class="summary-placeholder">Generating AI-powered aggregated summary from ${chatSummaries.length} conversations...</p>`;
 
-    // Simple aggregation (combine and truncate for now)
-    // TODO: Use AI to create better aggregated summary
-    const combinedText = chatSummaries.join(' ');
-    const aggregatedSummary = `This label contains ${currentLabelChats.length} conversations covering: ${combinedText.substring(0, 500)}${combinedText.length > 500 ? '...' : ''}`;
+    // Get label name for context
+    const label = await StorageService.getLabel(currentLabelId);
+    const labelName = label ? label.name : '';
+
+    // Use AI to create intelligent aggregated summary
+    const aggregatedSummary = await AIService.aggregateChatSummaries(chatSummaries, labelName);
 
     summaryContent.innerHTML = `<p>${aggregatedSummary}</p>`;
 
