@@ -12,6 +12,29 @@
   console.log('[Gemini Scraper] Content script loaded');
 
   /**
+   * Truncate text at word boundary
+   * @param {string} text - Text to truncate
+   * @param {number} maxLength - Maximum length (default 80)
+   * @returns {string} Truncated text with ellipsis if needed
+   */
+  function truncateAtWordBoundary(text, maxLength = 80) {
+    if (!text || text.length <= maxLength) {
+      return text;
+    }
+
+    // Find the last space before maxLength
+    const truncated = text.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(' ');
+
+    // If there's a space, truncate there; otherwise use maxLength
+    if (lastSpace > 0) {
+      return truncated.substring(0, lastSpace) + '...';
+    }
+
+    return truncated + '...';
+  }
+
+  /**
    * Wait for an element to appear in the DOM
    * @param {string} selector - CSS selector
    * @param {number} timeout - Timeout in milliseconds
@@ -73,7 +96,12 @@
         try {
           // Extract title from conversation-title element
           const titleElement = elem.querySelector('.conversation-title');
-          const title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+          let title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+
+          // Truncate long titles at word boundary
+          if (title !== 'Untitled Conversation') {
+            title = truncateAtWordBoundary(title, 80);
+          }
 
           // Extract ID from jslog attribute
           // Format: jslog="...BardVeMetadataKey:[...,["c_CONVERSATION_ID",...]]..."
@@ -324,7 +352,7 @@
               extractedTitle !== 'Conversation with Gemini' &&
               extractedTitle !== 'Recent' &&
               extractedTitle.length > 0) {
-            title = extractedTitle;
+            title = truncateAtWordBoundary(extractedTitle, 80);
             console.log('[Gemini Scraper] Found title:', title);
             break;
           }
@@ -335,7 +363,7 @@
       if (title === 'Untitled Conversation' && messages.length > 0) {
         const firstUserMessage = messages.find(m => m.role === 'user');
         if (firstUserMessage) {
-          title = firstUserMessage.content.substring(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '');
+          title = truncateAtWordBoundary(firstUserMessage.content, 80);
           console.log('[Gemini Scraper] Generated title from first user message:', title);
         }
       }
