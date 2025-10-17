@@ -767,146 +767,162 @@ async function processChatsForLabels(onProgress) {
       return;
     }
 
-    console.log('[Popup] Processing', chats.length, 'chats with AI summarization pipeline');
+    // Separate processed and unprocessed chats
+    const processedChats = chats.filter(chat => chat.processed && chat.chatSummary);
+    const unprocessedChats = chats.filter(chat => !chat.processed || !chat.chatSummary);
 
-    // STEP 1 & 2: Process each chat - summarize message pairs and generate chat summary
+    console.log(`[Popup] Found ${processedChats.length} already processed chats, ${unprocessedChats.length} need processing`);
+
+    // STEP 1 & 2: Only process chats that haven't been summarized yet
     let processedCount = 0;
 
-    for (const chat of chats) {
-      try {
-        if (onProgress) {
-          onProgress(processedCount, chats.length, `Processing "${chat.title.substring(0, 30)}..."`);
-        }
+    if (unprocessedChats.length > 0) {
+      console.log(`[Popup] Processing ${unprocessedChats.length} unprocessed chats with AI summarization pipeline`);
 
-        console.log(`[Popup] Processing chat ${processedCount + 1}/${chats.length}: ${chat.title}`);
-
-        // Skip if no messages
-        if (!chat.messages || chat.messages.length === 0) {
-          console.log(`[Popup] Skipping chat ${chat.id} - no messages`);
-          continue;
-        }
-
-        // STEP 1: Split messages into pairs
-        const messagePairs = [];
-        for (let i = 0; i < chat.messages.length; i += 2) {
-          const userMsg = chat.messages[i];
-          const assistantMsg = chat.messages[i + 1];
-
-          // Only create pair if both user and assistant messages exist
-          if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
-            messagePairs.push({
-              user: userMsg.content,
-              assistant: assistantMsg.content
-            });
-          }
-        }
-
-        console.log(`[Popup] Found ${messagePairs.length} message pairs in chat ${chat.id}`);
-
-        // Skip if no valid pairs
-        if (messagePairs.length === 0) {
-          console.log(`[Popup] Skipping chat ${chat.id} - no valid message pairs`);
-          continue;
-        }
-
-        // STEP 2: Summarize each message pair
-        const pairSummaries = [];
-        for (let i = 0; i < messagePairs.length; i++) {
-          const pair = messagePairs[i];
-          console.log(`[Popup] Summarizing pair ${i + 1}/${messagePairs.length} for chat ${chat.id}`);
-
-          try {
-            const pairSummary = await AIService.summarizeMessagePair(pair.user, pair.assistant);
-            pairSummaries.push(pairSummary);
-            console.log(`[Popup] Pair ${i + 1} summary: ${pairSummary.substring(0, 60)}...`);
-          } catch (error) {
-            console.error(`[Popup] Error summarizing pair ${i + 1}:`, error);
-            // Use fallback summary
-            pairSummaries.push(`Discussion: ${pair.user.substring(0, 50)}...`);
-          }
-        }
-
-        // STEP 3: Generate overall chat summary from pair summaries
-        console.log(`[Popup] Generating overall summary for chat ${chat.id}`);
-        let chatSummary;
+      for (const chat of unprocessedChats) {
         try {
-          chatSummary = await AIService.summarizeChat(pairSummaries, chat.title);
-          console.log(`[Popup] Chat summary: ${chatSummary.substring(0, 100)}...`);
-        } catch (error) {
-          console.error(`[Popup] Error generating chat summary:`, error);
-          // Use first pair summary as fallback
-          chatSummary = pairSummaries[0] || chat.title || 'Summary unavailable';
-        }
+          if (onProgress) {
+            onProgress(processedCount, unprocessedChats.length, `Processing "${chat.title.substring(0, 30)}..."`);
+          }
 
-        // STEP 4: Update chat with summaries via service worker
-        await chrome.runtime.sendMessage({
-          type: 'updateChat',
-          data: {
-            chatId: chat.id,
-            updates: {
-              messagePairSummaries: pairSummaries,
-              chatSummary: chatSummary,
-              processed: true
+          console.log(`[Popup] Processing chat ${processedCount + 1}/${unprocessedChats.length}: ${chat.title}`);
+
+          // Skip if no messages
+          if (!chat.messages || chat.messages.length === 0) {
+            console.log(`[Popup] Skipping chat ${chat.id} - no messages`);
+            continue;
+          }
+
+          // STEP 1: Split messages into pairs
+          const messagePairs = [];
+          for (let i = 0; i < chat.messages.length; i += 2) {
+            const userMsg = chat.messages[i];
+            const assistantMsg = chat.messages[i + 1];
+
+            // Only create pair if both user and assistant messages exist
+            if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
+              messagePairs.push({
+                user: userMsg.content,
+                assistant: assistantMsg.content
+              });
             }
           }
-        });
 
-        processedCount++;
-        console.log(`[Popup] Chat ${processedCount}/${chats.length} processed successfully`);
+          console.log(`[Popup] Found ${messagePairs.length} message pairs in chat ${chat.id}`);
 
-      } catch (error) {
-        console.error(`[Popup] Error processing chat ${chat.id}:`, error);
-        // Continue with next chat instead of failing entirely
-        continue;
+          // Skip if no valid pairs
+          if (messagePairs.length === 0) {
+            console.log(`[Popup] Skipping chat ${chat.id} - no valid message pairs`);
+            continue;
+          }
+
+          // STEP 2: Summarize each message pair
+          const pairSummaries = [];
+          for (let i = 0; i < messagePairs.length; i++) {
+            const pair = messagePairs[i];
+            console.log(`[Popup] Summarizing pair ${i + 1}/${messagePairs.length} for chat ${chat.id}`);
+
+            try {
+              const pairSummary = await AIService.summarizeMessagePair(pair.user, pair.assistant);
+              pairSummaries.push(pairSummary);
+              console.log(`[Popup] Pair ${i + 1} summary: ${pairSummary.substring(0, 60)}...`);
+            } catch (error) {
+              console.error(`[Popup] Error summarizing pair ${i + 1}:`, error);
+              // Use fallback summary
+              pairSummaries.push(`Discussion: ${pair.user.substring(0, 50)}...`);
+            }
+          }
+
+          // STEP 3: Generate overall chat summary from pair summaries
+          console.log(`[Popup] Generating overall summary for chat ${chat.id}`);
+          let chatSummary;
+          try {
+            chatSummary = await AIService.summarizeChat(pairSummaries, chat.title);
+            console.log(`[Popup] Chat summary: ${chatSummary.substring(0, 100)}...`);
+          } catch (error) {
+            console.error(`[Popup] Error generating chat summary:`, error);
+            // Use first pair summary as fallback
+            chatSummary = pairSummaries[0] || chat.title || 'Summary unavailable';
+          }
+
+          // STEP 4: Update chat with summaries via service worker
+          await chrome.runtime.sendMessage({
+            type: 'updateChat',
+            data: {
+              chatId: chat.id,
+              updates: {
+                messagePairSummaries: pairSummaries,
+                chatSummary: chatSummary,
+                processed: true
+              }
+            }
+          });
+
+          processedCount++;
+          console.log(`[Popup] Chat ${processedCount}/${unprocessedChats.length} processed successfully`);
+
+        } catch (error) {
+          console.error(`[Popup] Error processing chat ${chat.id}:`, error);
+          // Continue with next chat instead of failing entirely
+          continue;
+        }
       }
-    }
 
-    console.log(`[Popup] Successfully processed ${processedCount}/${chats.length} chats`);
+      console.log(`[Popup] Successfully processed ${processedCount}/${unprocessedChats.length} new chats`);
+    } else {
+      console.log('[Popup] All chats already processed, skipping to label generation');
+    }
 
     if (onProgress) {
-      onProgress(processedCount, chats.length, 'Generating labels from summaries...');
+      onProgress(chats.length, chats.length, 'Generating labels from summaries...');
     }
 
-    // STEP 5: Generate labels from all chat summaries
-    if (processedCount > 0) {
-      console.log('[Popup] Generating labels from chat summaries...');
+    // STEP 5: Generate labels from ALL chat summaries (including already processed)
+    console.log('[Popup] Generating labels from all chat summaries...');
 
-      try {
-        // Get updated chats with summaries
-        const updatedResponse = await chrome.runtime.sendMessage({ type: 'getAllChats' });
-        if (!updatedResponse.success) {
-          throw new Error('Failed to get updated chats');
-        }
-
-        const updatedChats = updatedResponse.data;
-
-        // Generate labels using Prompt API
-        const labels = await AIService.generateLabelsFromChatSummaries(updatedChats);
-
-        console.log('[Popup] Generated', labels.length, 'labels');
-
-        // Save labels via service worker
-        for (const label of labels) {
-          const suggestedLabel = {
-            id: `suggested_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-            name: label.name,
-            description: label.description,
-            confidence: label.confidence,
-            chatIds: label.conversationIds || [],
-            dismissed: false
-          };
-
-          await chrome.runtime.sendMessage({
-            type: 'saveSuggestedLabel',
-            data: suggestedLabel
-          });
-          console.log('[Popup] Saved suggested label:', suggestedLabel.name);
-        }
-
-      } catch (error) {
-        console.error('[Popup] Error generating labels from summaries:', error);
-        // Don't throw - summaries were saved successfully, labels can be regenerated later
+    try {
+      // Get all chats with summaries (including already processed ones)
+      const updatedResponse = await chrome.runtime.sendMessage({ type: 'getAllChats' });
+      if (!updatedResponse.success) {
+        throw new Error('Failed to get updated chats');
       }
+
+      const updatedChats = updatedResponse.data;
+      const chatsWithSummaries = updatedChats.filter(chat => chat.chatSummary);
+
+      console.log(`[Popup] Found ${chatsWithSummaries.length} chats with summaries (${processedChats.length} existing + ${processedCount} newly processed)`);
+
+      if (chatsWithSummaries.length === 0) {
+        console.warn('[Popup] No chats with summaries available for label generation');
+        return;
+      }
+
+      // Generate labels using Prompt API (with batch processing)
+      const labels = await AIService.generateLabelsFromChatSummaries(chatsWithSummaries);
+
+      console.log('[Popup] Generated', labels.length, 'labels');
+
+      // Save labels via service worker
+      for (const label of labels) {
+        const suggestedLabel = {
+          id: `suggested_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+          name: label.name,
+          description: label.description,
+          confidence: label.confidence,
+          chatIds: label.conversationIds || [],
+          dismissed: false
+        };
+
+        await chrome.runtime.sendMessage({
+          type: 'saveSuggestedLabel',
+          data: suggestedLabel
+        });
+        console.log('[Popup] Saved suggested label:', suggestedLabel.name);
+      }
+
+    } catch (error) {
+      console.error('[Popup] Error generating labels from summaries:', error);
+      // Don't throw - summaries were saved successfully, labels can be regenerated later
     }
 
     console.log('[Popup] AI processing pipeline complete');
