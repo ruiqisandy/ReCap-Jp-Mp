@@ -51,17 +51,45 @@ const viewLibraryBtn = document.getElementById('viewLibraryBtn');
 const libraryScreen = document.getElementById('libraryScreen');
 const backToWelcomeFromLibraryBtn = document.getElementById('backToWelcomeFromLibraryBtn');
 const refreshBtn = document.getElementById('refreshBtn');
-const aiProcessingSection = document.getElementById('aiProcessingSection');
-const processAIBtn = document.getElementById('processAIBtn');
-const aiProcessingProgress = document.getElementById('aiProcessingProgress');
-const aiProgressFill = document.getElementById('aiProgressFill');
-const aiStatusText = document.getElementById('aiStatusText');
+
+// DOM elements - Label View Screen
+const labelScreen = document.getElementById('labelScreen');
+const backToLibraryBtn = document.getElementById('backToLibraryBtn');
+const labelViewName = document.getElementById('labelViewName');
+const labelViewChatCount = document.getElementById('labelViewChatCount');
+const tabButtons = document.querySelectorAll('.tab-button');
+const summaryContent = document.getElementById('summaryContent');
+const generateSummaryBtn = document.getElementById('generateSummaryBtn');
+const labelChatList = document.getElementById('labelChatList');
+const chatlistFilters = document.querySelectorAll('.chatlist-filters .filter-btn');
+
+// Summarization section
+const summarizationSection = document.getElementById('summarizationSection');
+const summarizeBtn = document.getElementById('summarizeBtn');
+const summarizationProgress = document.getElementById('summarizationProgress');
+const summarizeProgressFill = document.getElementById('summarizeProgressFill');
+const summarizeStatusText = document.getElementById('summarizeStatusText');
+
+// Label generation section
+const labelGenerationSection = document.getElementById('labelGenerationSection');
+const generateLabelsBtn = document.getElementById('generateLabelsBtn');
+const labelGenerationProgress = document.getElementById('labelGenerationProgress');
+const labelProgressFill = document.getElementById('labelProgressFill');
+const labelStatusText = document.getElementById('labelStatusText');
+
+// Label lists
 const suggestedBadge = document.getElementById('suggestedBadge');
 const suggestedList = document.getElementById('suggestedList');
+const clearSuggestedBtn = document.getElementById('clearSuggestedBtn');
 const createLabelBtn = document.getElementById('createLabelBtn');
 const labelList = document.getElementById('labelList');
+const clearAcceptedBtn = document.getElementById('clearAcceptedBtn');
+
+// Footer
 const settingsBtn = document.getElementById('settingsBtn');
 const clearDataBtn = document.getElementById('clearDataBtn');
+
+// Chat list
 const allChatsBadge = document.getElementById('allChatsBadge');
 const chatList = document.getElementById('chatList');
 const filterButtons = document.querySelectorAll('.filter-btn');
@@ -146,13 +174,14 @@ async function loadCurrentScreen() {
 
 /**
  * Show specific screen
- * @param {string} screenName - 'welcome', 'progress', or 'library'
+ * @param {string} screenName - 'welcome', 'progress', 'library', or 'label'
  */
 function showScreen(screenName) {
   // Hide all screens
   welcomeScreen.style.display = 'none';
   progressScreen.style.display = 'none';
   libraryScreen.style.display = 'none';
+  labelScreen.style.display = 'none';
 
   // Show requested screen
   switch (screenName) {
@@ -164,6 +193,9 @@ function showScreen(screenName) {
       break;
     case 'library':
       libraryScreen.style.display = 'block';
+      break;
+    case 'label':
+      labelScreen.style.display = 'block';
       break;
   }
 
@@ -191,10 +223,41 @@ function setupEventListeners() {
   // Library Screen
   backToWelcomeFromLibraryBtn.addEventListener('click', () => showScreen('welcome'));
   refreshBtn.addEventListener('click', loadLibrary);
-  processAIBtn.addEventListener('click', handleProcessAI);
+  summarizeBtn.addEventListener('click', handleSummarizeChats);
+  generateLabelsBtn.addEventListener('click', handleGenerateLabels);
+  clearSuggestedBtn.addEventListener('click', handleClearSuggestedLabels);
   createLabelBtn.addEventListener('click', handleCreateLabel);
+  clearAcceptedBtn.addEventListener('click', handleClearAcceptedLabels);
   settingsBtn.addEventListener('click', handleSettings);
   clearDataBtn.addEventListener('click', handleClearData);
+
+  // Label View Screen
+  backToLibraryBtn.addEventListener('click', () => {
+    showScreen('library');
+    loadLibrary();
+  });
+  generateSummaryBtn.addEventListener('click', handleGenerateLabelSummary);
+
+  // Tab buttons
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-tab');
+      switchTab(tab);
+    });
+  });
+
+  // Chat list filters (label view)
+  chatlistFilters.forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Remove active class from all
+      chatlistFilters.forEach(b => b.classList.remove('active'));
+      // Add active to clicked
+      btn.classList.add('active');
+      // Filter
+      const platform = btn.getAttribute('data-platform');
+      filterLabelChats(platform);
+    });
+  });
 
   // Chat filter buttons
   filterButtons.forEach(btn => {
@@ -744,14 +807,14 @@ function delay(ms) {
 }
 
 /**
- * Process all chats for AI-powered label extraction
- * Runs in popup context (has access to AI APIs)
+ * Summarize all unprocessed chats
+ * Runs in popup context (has access to AI Summarizer API)
  *
  * @param {Function} onProgress - Progress callback (current, total, message)
- * @returns {Promise<void>}
+ * @returns {Promise<number>} Number of chats successfully summarized
  */
-async function processChatsForLabels(onProgress) {
-  console.log('[Popup] Starting AI processing for label extraction');
+async function summarizeChats(onProgress) {
+  console.log('[Popup] Starting chat summarization');
 
   try {
     // Get all chats from storage
@@ -764,218 +827,281 @@ async function processChatsForLabels(onProgress) {
 
     if (chats.length === 0) {
       console.log('[Popup] No chats to process');
-      return;
+      return 0;
     }
 
-    // Separate processed and unprocessed chats
-    const processedChats = chats.filter(chat => chat.processed && chat.chatSummary);
+    // Filter only unprocessed chats
     const unprocessedChats = chats.filter(chat => !chat.processed || !chat.chatSummary);
 
-    console.log(`[Popup] Found ${processedChats.length} already processed chats, ${unprocessedChats.length} need processing`);
+    console.log(`[Popup] Found ${unprocessedChats.length} unprocessed chats`);
 
-    // STEP 1 & 2: Only process chats that haven't been summarized yet
+    if (unprocessedChats.length === 0) {
+      console.log('[Popup] All chats already processed');
+      return 0;
+    }
+
+    // Process each unprocessed chat
     let processedCount = 0;
 
-    if (unprocessedChats.length > 0) {
-      console.log(`[Popup] Processing ${unprocessedChats.length} unprocessed chats with AI summarization pipeline`);
+    for (const chat of unprocessedChats) {
+      try {
+        if (onProgress) {
+          onProgress(processedCount, unprocessedChats.length, `Summarizing "${chat.title.substring(0, 30)}..."`);
+        }
 
-      for (const chat of unprocessedChats) {
-        try {
-          if (onProgress) {
-            onProgress(processedCount, unprocessedChats.length, `Processing "${chat.title.substring(0, 30)}..."`);
-          }
+        console.log(`[Popup] Processing chat ${processedCount + 1}/${unprocessedChats.length}: ${chat.title}`);
 
-          console.log(`[Popup] Processing chat ${processedCount + 1}/${unprocessedChats.length}: ${chat.title}`);
-
-          // Skip if no messages
-          if (!chat.messages || chat.messages.length === 0) {
-            console.log(`[Popup] Skipping chat ${chat.id} - no messages`);
-            continue;
-          }
-
-          // STEP 1: Split messages into pairs
-          const messagePairs = [];
-          for (let i = 0; i < chat.messages.length; i += 2) {
-            const userMsg = chat.messages[i];
-            const assistantMsg = chat.messages[i + 1];
-
-            // Only create pair if both user and assistant messages exist
-            if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
-              messagePairs.push({
-                user: userMsg.content,
-                assistant: assistantMsg.content
-              });
-            }
-          }
-
-          console.log(`[Popup] Found ${messagePairs.length} message pairs in chat ${chat.id}`);
-
-          // Skip if no valid pairs
-          if (messagePairs.length === 0) {
-            console.log(`[Popup] Skipping chat ${chat.id} - no valid message pairs`);
-            continue;
-          }
-
-          // STEP 2: Summarize each message pair
-          const pairSummaries = [];
-          for (let i = 0; i < messagePairs.length; i++) {
-            const pair = messagePairs[i];
-            console.log(`[Popup] Summarizing pair ${i + 1}/${messagePairs.length} for chat ${chat.id}`);
-
-            try {
-              const pairSummary = await AIService.summarizeMessagePair(pair.user, pair.assistant);
-              pairSummaries.push(pairSummary);
-              console.log(`[Popup] Pair ${i + 1} summary: ${pairSummary.substring(0, 60)}...`);
-            } catch (error) {
-              console.error(`[Popup] Error summarizing pair ${i + 1}:`, error);
-              // Use fallback summary
-              pairSummaries.push(`Discussion: ${pair.user.substring(0, 50)}...`);
-            }
-          }
-
-          // STEP 3: Generate overall chat summary from pair summaries
-          console.log(`[Popup] Generating overall summary for chat ${chat.id}`);
-          let chatSummary;
-          try {
-            chatSummary = await AIService.summarizeChat(pairSummaries, chat.title);
-            console.log(`[Popup] Chat summary: ${chatSummary.substring(0, 100)}...`);
-          } catch (error) {
-            console.error(`[Popup] Error generating chat summary:`, error);
-            // Use first pair summary as fallback
-            chatSummary = pairSummaries[0] || chat.title || 'Summary unavailable';
-          }
-
-          // STEP 4: Update chat with summaries via service worker
-          await chrome.runtime.sendMessage({
-            type: 'updateChat',
-            data: {
-              chatId: chat.id,
-              updates: {
-                messagePairSummaries: pairSummaries,
-                chatSummary: chatSummary,
-                processed: true
-              }
-            }
-          });
-
-          processedCount++;
-          console.log(`[Popup] Chat ${processedCount}/${unprocessedChats.length} processed successfully`);
-
-        } catch (error) {
-          console.error(`[Popup] Error processing chat ${chat.id}:`, error);
-          // Continue with next chat instead of failing entirely
+        // Skip if no messages
+        if (!chat.messages || chat.messages.length === 0) {
+          console.log(`[Popup] Skipping chat ${chat.id} - no messages`);
           continue;
         }
-      }
 
-      console.log(`[Popup] Successfully processed ${processedCount}/${unprocessedChats.length} new chats`);
-    } else {
-      console.log('[Popup] All chats already processed, skipping to label generation');
-    }
+        // STEP 1: Split messages into pairs
+        const messagePairs = [];
+        for (let i = 0; i < chat.messages.length; i += 2) {
+          const userMsg = chat.messages[i];
+          const assistantMsg = chat.messages[i + 1];
 
-    if (onProgress) {
-      onProgress(chats.length, chats.length, 'Generating labels from summaries...');
-    }
+          // Only create pair if both user and assistant messages exist
+          if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
+            messagePairs.push({
+              user: userMsg.content,
+              assistant: assistantMsg.content
+            });
+          }
+        }
 
-    // STEP 5: Generate labels from ALL chat summaries (including already processed)
-    console.log('[Popup] Generating labels from all chat summaries...');
+        console.log(`[Popup] Found ${messagePairs.length} message pairs in chat ${chat.id}`);
 
-    try {
-      // Get all chats with summaries (including already processed ones)
-      const updatedResponse = await chrome.runtime.sendMessage({ type: 'getAllChats' });
-      if (!updatedResponse.success) {
-        throw new Error('Failed to get updated chats');
-      }
+        // Skip if no valid pairs
+        if (messagePairs.length === 0) {
+          console.log(`[Popup] Skipping chat ${chat.id} - no valid message pairs`);
+          continue;
+        }
 
-      const updatedChats = updatedResponse.data;
-      const chatsWithSummaries = updatedChats.filter(chat => chat.chatSummary);
+        // STEP 2: Summarize each message pair
+        const pairSummaries = [];
+        for (let i = 0; i < messagePairs.length; i++) {
+          const pair = messagePairs[i];
+          console.log(`[Popup] Summarizing pair ${i + 1}/${messagePairs.length} for chat ${chat.id}`);
 
-      console.log(`[Popup] Found ${chatsWithSummaries.length} chats with summaries (${processedChats.length} existing + ${processedCount} newly processed)`);
+          try {
+            const pairSummary = await AIService.summarizeMessagePair(pair.user, pair.assistant);
+            pairSummaries.push(pairSummary);
+            console.log(`[Popup] Pair ${i + 1} summary: ${pairSummary.substring(0, 60)}...`);
+          } catch (error) {
+            console.error(`[Popup] Error summarizing pair ${i + 1}:`, error);
+            // Use fallback summary
+            pairSummaries.push(`Discussion: ${pair.user.substring(0, 50)}...`);
+          }
+        }
 
-      if (chatsWithSummaries.length === 0) {
-        console.warn('[Popup] No chats with summaries available for label generation');
-        return;
-      }
+        // STEP 3: Generate overall chat summary from pair summaries
+        console.log(`[Popup] Generating overall summary for chat ${chat.id}`);
+        let chatSummary;
+        try {
+          chatSummary = await AIService.summarizeChat(pairSummaries, chat.title);
+          console.log(`[Popup] Chat summary: ${chatSummary.substring(0, 100)}...`);
+        } catch (error) {
+          console.error(`[Popup] Error generating chat summary:`, error);
+          // Use first pair summary as fallback
+          chatSummary = pairSummaries[0] || chat.title || 'Summary unavailable';
+        }
 
-      // Generate labels using Prompt API (with batch processing)
-      const labels = await AIService.generateLabelsFromChatSummaries(chatsWithSummaries);
-
-      console.log('[Popup] Generated', labels.length, 'labels');
-
-      // Save labels via service worker
-      for (const label of labels) {
-        const suggestedLabel = {
-          id: `suggested_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-          name: label.name,
-          description: label.description,
-          confidence: label.confidence,
-          chatIds: label.conversationIds || [],
-          dismissed: false
-        };
-
+        // STEP 4: Update chat with summaries via service worker
         await chrome.runtime.sendMessage({
-          type: 'saveSuggestedLabel',
-          data: suggestedLabel
+          type: 'updateChat',
+          data: {
+            chatId: chat.id,
+            updates: {
+              messagePairSummaries: pairSummaries,
+              chatSummary: chatSummary,
+              processed: true
+            }
+          }
         });
-        console.log('[Popup] Saved suggested label:', suggestedLabel.name);
-      }
 
-    } catch (error) {
-      console.error('[Popup] Error generating labels from summaries:', error);
-      // Don't throw - summaries were saved successfully, labels can be regenerated later
+        processedCount++;
+        console.log(`[Popup] Chat ${processedCount}/${unprocessedChats.length} processed successfully`);
+
+      } catch (error) {
+        console.error(`[Popup] Error processing chat ${chat.id}:`, error);
+        // Continue with next chat instead of failing entirely
+        continue;
+      }
     }
 
-    console.log('[Popup] AI processing pipeline complete');
+    console.log(`[Popup] Successfully summarized ${processedCount}/${unprocessedChats.length} chats`);
+    return processedCount;
 
   } catch (error) {
-    console.error('[Popup] Error in AI processing pipeline:', error);
+    console.error('[Popup] Error in chat summarization:', error);
     throw error;
   }
 }
 
 /**
- * Handle AI processing button click
+ * Generate label suggestions from chat summaries
+ * Runs in popup context (has access to AI Prompt API)
+ *
+ * @param {Function} onProgress - Progress callback (current, total, message)
+ * @returns {Promise<number>} Number of labels generated
  */
-async function handleProcessAI() {
-  console.log('[Popup] Starting AI processing from library screen');
+async function generateLabels(onProgress) {
+  console.log('[Popup] Starting label generation from chat summaries');
+
+  try {
+    if (onProgress) {
+      onProgress(0, 1, 'Loading chats with summaries...');
+    }
+
+    // Get all chats with summaries
+    const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
+    if (!response.success) {
+      throw new Error('Failed to get chats from storage');
+    }
+
+    const allChats = response.data;
+    const chatsWithSummaries = allChats.filter(chat => chat.chatSummary);
+
+    console.log(`[Popup] Found ${chatsWithSummaries.length} chats with summaries`);
+
+    if (chatsWithSummaries.length === 0) {
+      console.warn('[Popup] No chats with summaries available for label generation');
+      throw new Error('No chats with summaries found. Please run summarization first.');
+    }
+
+    if (onProgress) {
+      onProgress(0, 1, 'Generating labels from summaries...');
+    }
+
+    // Generate labels using Prompt API (with batch processing)
+    const labels = await AIService.generateLabelsFromChatSummaries(chatsWithSummaries);
+
+    console.log('[Popup] Generated', labels.length, 'labels');
+
+    if (onProgress) {
+      onProgress(1, 1, 'Saving label suggestions...');
+    }
+
+    // Save labels via service worker
+    for (const label of labels) {
+      const suggestedLabel = {
+        id: `suggested_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+        name: label.name,
+        description: label.description,
+        confidence: label.confidence,
+        chatIds: label.conversationIds || [],
+        dismissed: false
+      };
+
+      await chrome.runtime.sendMessage({
+        type: 'saveSuggestedLabel',
+        data: suggestedLabel
+      });
+      console.log('[Popup] Saved suggested label:', suggestedLabel.name);
+    }
+
+    console.log('[Popup] Label generation complete');
+    return labels.length;
+
+  } catch (error) {
+    console.error('[Popup] Error generating labels:', error);
+    throw error;
+  }
+}
+
+/**
+ * Handle summarization button click
+ */
+async function handleSummarizeChats() {
+  console.log('[Popup] Starting chat summarization from library screen');
 
   try {
     // Disable button and show progress
-    processAIBtn.disabled = true;
-    processAIBtn.textContent = 'Processing...';
-    aiProcessingProgress.style.display = 'block';
-    aiProgressFill.style.width = '0%';
-    aiStatusText.textContent = 'Initializing AI processing...';
+    summarizeBtn.disabled = true;
+    summarizeBtn.textContent = 'Summarizing...';
+    summarizationProgress.style.display = 'block';
+    summarizeProgressFill.style.width = '0%';
+    summarizeStatusText.textContent = 'Initializing summarization...';
 
-    // Run AI processing
-    await processChatsForLabels((current, total, message) => {
+    // Run summarization
+    const count = await summarizeChats((current, total, message) => {
       // Update progress
       const progress = (current / total) * 100;
-      aiProgressFill.style.width = `${progress}%`;
-      aiStatusText.textContent = message || `Processing ${current}/${total} chats...`;
+      summarizeProgressFill.style.width = `${progress}%`;
+      summarizeStatusText.textContent = message || `Summarizing ${current}/${total} chats...`;
     });
 
     // Success
-    aiProgressFill.style.width = '100%';
-    aiStatusText.textContent = 'AI processing complete!';
+    summarizeProgressFill.style.width = '100%';
+    summarizeStatusText.textContent = `Successfully summarized ${count} chats!`;
 
     // Wait a moment then hide progress and refresh library
     setTimeout(async () => {
-      aiProcessingProgress.style.display = 'none';
-      processAIBtn.disabled = false;
-      processAIBtn.textContent = 'Process with AI';
+      summarizationProgress.style.display = 'none';
+      summarizeBtn.disabled = false;
+      summarizeBtn.textContent = 'Summarize Chats';
       await loadLibrary();
     }, 2000);
 
   } catch (error) {
-    console.error('[Popup] AI processing error:', error);
-    aiStatusText.textContent = 'Error: ' + error.message;
-    processAIBtn.disabled = false;
-    processAIBtn.textContent = 'Process with AI';
+    console.error('[Popup] Summarization error:', error);
+    summarizeStatusText.textContent = 'Error: ' + error.message;
+    summarizeBtn.disabled = false;
+    summarizeBtn.textContent = 'Summarize Chats';
 
     // Show error for 5 seconds then hide
     setTimeout(() => {
-      aiProcessingProgress.style.display = 'none';
+      summarizationProgress.style.display = 'none';
+    }, 5000);
+  }
+}
+
+/**
+ * Handle label generation button click
+ */
+async function handleGenerateLabels() {
+  console.log('[Popup] Starting label generation from library screen');
+
+  try {
+    // Disable button and show progress
+    generateLabelsBtn.disabled = true;
+    generateLabelsBtn.textContent = 'Generating...';
+    labelGenerationProgress.style.display = 'block';
+    labelProgressFill.style.width = '0%';
+    labelStatusText.textContent = 'Initializing label generation...';
+
+    // Run label generation
+    const count = await generateLabels((current, total, message) => {
+      // Update progress
+      const progress = (current / total) * 100;
+      labelProgressFill.style.width = `${progress}%`;
+      labelStatusText.textContent = message || `Generating labels...`;
+    });
+
+    // Success
+    labelProgressFill.style.width = '100%';
+    labelStatusText.textContent = `Successfully generated ${count} label suggestions!`;
+
+    // Wait a moment then hide progress and refresh library
+    setTimeout(async () => {
+      labelGenerationProgress.style.display = 'none';
+      generateLabelsBtn.disabled = false;
+      generateLabelsBtn.textContent = 'Generate Labels';
+      await loadLibrary();
+    }, 2000);
+
+  } catch (error) {
+    console.error('[Popup] Label generation error:', error);
+    labelStatusText.textContent = 'Error: ' + error.message;
+    generateLabelsBtn.disabled = false;
+    generateLabelsBtn.textContent = 'Generate Labels';
+
+    // Show error for 5 seconds then hide
+    setTimeout(() => {
+      labelGenerationProgress.style.display = 'none';
     }, 5000);
   }
 }
@@ -985,20 +1111,36 @@ async function handleProcessAI() {
  */
 async function loadLibrary() {
   try {
-    // Load all chats first to check if we need to show AI processing section
+    // Load all chats first to check button visibility
     await loadAllChats();
 
-    // Check if there are unprocessed chats
+    // Get chat processing state to determine which buttons to show
     const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
     if (response.success) {
       const chats = Object.values(response.data);
-      const unprocessedChats = chats.filter(chat => !chat.processed);
+      const unprocessedChats = chats.filter(chat => !chat.processed || !chat.chatSummary);
+      const processedChats = chats.filter(chat => chat.processed && chat.chatSummary);
 
-      // Show AI processing section if there are unprocessed chats
+      console.log(`[Popup] Chat state: ${unprocessedChats.length} unprocessed, ${processedChats.length} processed`);
+
+      // Show summarization section if there are unprocessed chats
       if (unprocessedChats.length > 0) {
-        aiProcessingSection.style.display = 'block';
+        summarizationSection.style.display = 'block';
+        // Update button text to show count
+        const baseText = 'Summarize Chats';
+        summarizeBtn.textContent = `${baseText} (${unprocessedChats.length})`;
       } else {
-        aiProcessingSection.style.display = 'none';
+        summarizationSection.style.display = 'none';
+      }
+
+      // Show label generation section if there are processed chats
+      if (processedChats.length > 0) {
+        labelGenerationSection.style.display = 'block';
+        // Update button text to show count
+        const baseText = 'Generate Labels';
+        generateLabelsBtn.textContent = `${baseText} (${processedChats.length} chats)`;
+      } else {
+        labelGenerationSection.style.display = 'none';
       }
     }
 
@@ -1126,8 +1268,12 @@ function filterChats(platform) {
 function renderSuggestedLabels(labels) {
   if (labels.length === 0) {
     suggestedList.innerHTML = '<div class="empty-state"><p>No suggestions yet. Run AI processing to generate label suggestions.</p></div>';
+    clearSuggestedBtn.style.display = 'none';
     return;
   }
+
+  // Show clear button when there are suggested labels
+  clearSuggestedBtn.style.display = 'inline-flex';
 
   suggestedList.innerHTML = labels.map(label => `
     <div class="label-item suggested" data-id="${label.id}">
@@ -1165,17 +1311,32 @@ function renderSuggestedLabels(labels) {
 function renderLabels(labels) {
   if (labels.length === 0) {
     labelList.innerHTML = '<div class="empty-state"><p>Your curated labels will appear here.</p></div>';
+    clearAcceptedBtn.style.display = 'none';
     return;
   }
 
+  // Show clear button when there are accepted labels
+  clearAcceptedBtn.style.display = 'inline-flex';
+
   labelList.innerHTML = labels.map(label => `
-    <div class="label-item" data-id="${label.id}">
+    <div class="label-item clickable" data-id="${label.id}">
       <div class="label-content">
         <h3>${label.name}</h3>
         <span class="badge-small">${label.chatIds.length} chats</span>
       </div>
+      <svg class="label-arrow" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+        <path d="M7 4L13 10L7 16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
     </div>
   `).join('');
+
+  // Add click listeners to navigate to label detail page
+  labelList.querySelectorAll('.label-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const labelId = item.getAttribute('data-id');
+      openLabelDetail(labelId);
+    });
+  });
 }
 
 /**
@@ -1207,6 +1368,259 @@ window.dismissLabel = async function(labelId) {
     console.error('[Popup] Error dismissing label:', error);
   }
 };
+
+/**
+ * Handle clear suggested labels
+ */
+async function handleClearSuggestedLabels() {
+  const confirmed = confirm('Clear all suggested labels?\n\nThis will remove all AI-generated label suggestions. You can regenerate them later.');
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({ type: 'clearSuggestedLabels' });
+    console.log('[Popup] Suggested labels cleared');
+    await loadLibrary();
+  } catch (error) {
+    console.error('[Popup] Error clearing suggested labels:', error);
+    alert('Error clearing suggested labels: ' + error.message);
+  }
+}
+
+/**
+ * Handle clear accepted labels
+ */
+async function handleClearAcceptedLabels() {
+  const confirmed = confirm('Clear all accepted labels?\n\nThis will delete all your curated labels and remove label references from chats.\n\nThis action cannot be undone.');
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({ type: 'clearAcceptedLabels' });
+    console.log('[Popup] Accepted labels cleared');
+    await loadLibrary();
+  } catch (error) {
+    console.error('[Popup] Error clearing accepted labels:', error);
+    alert('Error clearing accepted labels: ' + error.message);
+  }
+}
+
+/**
+ * Open label view screen
+ */
+async function openLabelDetail(labelId) {
+  showScreen('label');
+  await loadLabelView(labelId);
+}
+
+// Global state for label view
+let currentLabelId = null;
+let currentLabelChats = [];
+
+/**
+ * Load label view screen
+ */
+async function loadLabelView(labelId) {
+  try {
+    console.log('[Popup] Loading label view:', labelId);
+    currentLabelId = labelId;
+
+    // Get label from storage
+    const label = await StorageService.getLabel(labelId);
+
+    if (!label) {
+      throw new Error('Label not found');
+    }
+
+    // Update header
+    labelViewName.textContent = label.name;
+    labelViewChatCount.textContent = `${label.chatIds.length} chat${label.chatIds.length !== 1 ? 's' : ''}`;
+
+    // Load chats
+    currentLabelChats = [];
+    for (const chatId of label.chatIds) {
+      const chat = await StorageService.getChat(chatId);
+      if (chat) {
+        currentLabelChats.push(chat);
+      }
+    }
+
+    // Sort by date (newest first)
+    currentLabelChats.sort((a, b) => b.date - a.date);
+
+    // Load summary if exists
+    if (label.summary) {
+      summaryContent.innerHTML = `<p>${label.summary}</p>`;
+    } else {
+      summaryContent.innerHTML = `<p class="summary-placeholder">Click "Generate Summary" to create an aggregated summary from all conversations in this label.</p>`;
+    }
+
+    // Reset to summary tab
+    switchTab('summary');
+
+    // Render chat list (will be shown when user clicks Chat List tab)
+    renderLabelChatList(currentLabelChats);
+
+    console.log('[Popup] Label view loaded successfully');
+  } catch (error) {
+    console.error('[Popup] Error loading label view:', error);
+    labelViewName.textContent = 'Error loading label';
+    summaryContent.innerHTML = `<p class="summary-placeholder" style="color: #ef4444;">Error: ${error.message}</p>`;
+  }
+}
+
+/**
+ * Switch tabs in label view
+ */
+function switchTab(tabName) {
+  // Update button styles
+  tabButtons.forEach(btn => {
+    if (btn.getAttribute('data-tab') === tabName) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  // Show/hide panels
+  const panels = {
+    summary: document.getElementById('summaryTab'),
+    chatlist: document.getElementById('chatlistTab'),
+    mindmap: document.getElementById('mindmapTab'),
+    quiz: document.getElementById('quizTab')
+  };
+
+  Object.keys(panels).forEach(key => {
+    if (key === tabName) {
+      panels[key].classList.add('active');
+    } else {
+      panels[key].classList.remove('active');
+    }
+  });
+
+  console.log('[Popup] Switched to tab:', tabName);
+}
+
+/**
+ * Render chat list in label view
+ */
+function renderLabelChatList(chats) {
+  if (chats.length === 0) {
+    labelChatList.innerHTML = '<div class="empty-state"><p>No conversations match this filter.</p></div>';
+    return;
+  }
+
+  labelChatList.innerHTML = chats.map(chat => {
+    const messageCount = chat.messages ? chat.messages.length : 0;
+    const date = new Date(chat.date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+
+    const summary = chat.chatSummary || 'No summary available';
+
+    return `
+      <div class="chat-item" data-id="${chat.id}" data-platform="${chat.platform}">
+        <div class="chat-item-header">
+          <span class="chat-platform-badge ${chat.platform}">${PLATFORMS[chat.platform].name}</span>
+          <span class="chat-item-title">${chat.title}</span>
+          <button class="chat-item-link-btn" data-url="${chat.url}" title="Open original chat">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+              <path d="M9 6.5V9.5C9 9.77614 8.77614 10 8.5 10H2.5C2.22386 10 2 9.77614 2 9.5V3.5C2 3.22386 2.22386 3 2.5 3H5.5" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M7 2H10M10 2V5M10 2L6 6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="chat-item-summary">${summary.substring(0, 150)}${summary.length > 150 ? '...' : ''}</div>
+        <div class="chat-item-meta">
+          <span class="chat-item-messages">${messageCount} messages</span>
+          <span class="chat-item-date">${date}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add event listeners for link buttons
+  const linkButtons = labelChatList.querySelectorAll('.chat-item-link-btn');
+  linkButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const url = btn.getAttribute('data-url');
+      if (url) {
+        chrome.tabs.create({ url, active: true });
+      }
+    });
+  });
+}
+
+/**
+ * Filter label chats by platform
+ */
+function filterLabelChats(platform) {
+  if (platform === 'all') {
+    renderLabelChatList(currentLabelChats);
+  } else {
+    const filtered = currentLabelChats.filter(chat => chat.platform === platform);
+    renderLabelChatList(filtered);
+  }
+}
+
+/**
+ * Handle generate label summary
+ */
+async function handleGenerateLabelSummary() {
+  console.log('[Popup] Generating label summary...');
+
+  try {
+    // Disable button
+    generateSummaryBtn.disabled = true;
+    generateSummaryBtn.textContent = 'Generating...';
+
+    // Collect all chat summaries
+    const chatSummaries = currentLabelChats
+      .filter(chat => chat.chatSummary)
+      .map(chat => chat.chatSummary);
+
+    if (chatSummaries.length === 0) {
+      throw new Error('No chat summaries available. Please run summarization first.');
+    }
+
+    // Show loading state
+    summaryContent.innerHTML = `<p class="summary-placeholder">Generating aggregated summary from ${chatSummaries.length} conversations...</p>`;
+
+    // Simple aggregation (combine and truncate for now)
+    // TODO: Use AI to create better aggregated summary
+    const combinedText = chatSummaries.join(' ');
+    const aggregatedSummary = `This label contains ${currentLabelChats.length} conversations covering: ${combinedText.substring(0, 500)}${combinedText.length > 500 ? '...' : ''}`;
+
+    summaryContent.innerHTML = `<p>${aggregatedSummary}</p>`;
+
+    // Save summary to label
+    await StorageService.updateLabel(currentLabelId, {
+      summary: aggregatedSummary
+    });
+
+    console.log('[Popup] Summary generated successfully');
+
+  } catch (error) {
+    console.error('[Popup] Error generating summary:', error);
+    summaryContent.innerHTML = `<p class="summary-placeholder" style="color: #ef4444;">Error: ${error.message}</p>`;
+  } finally {
+    // Re-enable button
+    generateSummaryBtn.disabled = false;
+    generateSummaryBtn.innerHTML = `
+      <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+        <path d="M7 1v12M1 7h12" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      Generate Summary
+    `;
+  }
+}
 
 /**
  * Handle create label

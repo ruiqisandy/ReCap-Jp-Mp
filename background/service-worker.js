@@ -124,6 +124,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'clearSuggestedLabels':
+          await handleClearSuggestedLabels();
+          sendResponse({ success: true });
+          break;
+
+        case 'clearAcceptedLabels':
+          await handleClearAcceptedLabels();
+          sendResponse({ success: true });
+          break;
+
         default:
           console.warn('[Background] Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -393,6 +403,70 @@ async function handleAcceptSuggestedLabel(data) {
   await StorageService.removeSuggestedLabel(labelId);
 
   console.log('[Background] Suggested label accepted and converted:', newLabel.name);
+}
+
+/**
+ * Handle clearing all suggested labels
+ */
+async function handleClearSuggestedLabels() {
+  console.log('[Background] Clearing all suggested labels');
+
+  try {
+    // Get all suggested labels
+    const suggestedLabels = await StorageService.getAllSuggestedLabels();
+    const labelIds = Object.keys(suggestedLabels);
+
+    console.log(`[Background] Removing ${labelIds.length} suggested labels`);
+
+    // Remove each suggested label
+    for (const labelId of labelIds) {
+      await StorageService.removeSuggestedLabel(labelId);
+    }
+
+    console.log('[Background] All suggested labels cleared');
+  } catch (error) {
+    console.error('[Background] Error clearing suggested labels:', error);
+    throw error;
+  }
+}
+
+/**
+ * Handle clearing all accepted labels
+ */
+async function handleClearAcceptedLabels() {
+  console.log('[Background] Clearing all accepted labels');
+
+  try {
+    // Get all accepted labels
+    const labels = await StorageService.getAllLabels();
+    const labelIds = Object.keys(labels);
+
+    console.log(`[Background] Removing ${labelIds.length} accepted labels`);
+
+    // For each label, remove label references from chats
+    for (const labelId of labelIds) {
+      const label = labels[labelId];
+
+      if (label.chatIds && label.chatIds.length > 0) {
+        // Remove this label ID from each chat
+        for (const chatId of label.chatIds) {
+          const chat = await StorageService.getChat(chatId);
+          if (chat && chat.labelIds) {
+            const updatedLabelIds = chat.labelIds.filter(id => id !== labelId);
+            await StorageService.updateChat(chatId, { labelIds: updatedLabelIds });
+          }
+        }
+      }
+
+      // Remove the label itself
+      await StorageService.deleteLabel(labelId);
+    }
+
+    console.log('[Background] All accepted labels cleared');
+  } catch (error) {
+    console.error('[Background] Error clearing accepted labels:', error);
+    throw error;
+  }
 }
 
 /**
