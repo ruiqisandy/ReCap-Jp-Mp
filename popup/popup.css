@@ -876,22 +876,6 @@ body {
   padding-right: 4px;
 }
 
-/* Remove box styling for chat items in label screen */
-.chatlist-items .chat-item {
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid #e5e7eb;
-  border-radius: 0;
-  padding: 12px 0;
-}
-
-.chatlist-items .chat-item:hover {
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
-  box-shadow: none;
-  transform: none;
-}
-
 .placeholder-tab {
   background: #f9fafb;
   border: 2px dashed #d1d5db;
