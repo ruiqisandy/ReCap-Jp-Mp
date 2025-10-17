@@ -109,6 +109,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'updateChat':
+          await StorageService.updateChat(message.data.chatId, message.data.updates);
+          sendResponse({ success: true });
+          break;
+
+        case 'saveSuggestedLabel':
+          await StorageService.saveSuggestedLabel(message.data);
+          sendResponse({ success: true });
+          break;
+
         case 'clearAllData':
           await StorageService.clearAllData();
           sendResponse({ success: true });
@@ -178,6 +188,13 @@ async function handleCheckAI() {
 
 /**
  * Process all chats for AI-powered label extraction
+ *
+ * Pipeline:
+ * 1. For each chat, split messages into pairs (user + assistant)
+ * 2. Summarize each pair using Summarizer API
+ * 3. Generate overall chat summary from pair summaries
+ * 4. Store summaries in chat object
+ * 5. Use Prompt API to analyze all chat summaries and generate 5-10 labels
  */
 async function handleProcessChatsForLabels() {
   console.log('[Background] Starting AI processing for label extraction');
@@ -196,35 +213,134 @@ async function handleProcessChatsForLabels() {
       return;
     }
 
-    console.log('[Background] Processing', chats.length, 'chats for topic extraction');
+    console.log('[Background] Processing', chats.length, 'chats with new summarization pipeline');
 
-    // Extract topics using AI
-    const topics = await AIService.extractTopics(chats);
+    // STEP 1 & 2: Process each chat - summarize message pairs and generate chat summary
+    let processedCount = 0;
 
-    console.log('[Background] Extracted', topics.length, 'topics');
+    for (const chat of chats) {
+      try {
+        console.log(`[Background] Processing chat ${processedCount + 1}/${chats.length}: ${chat.title}`);
 
-    // Save as suggested labels
-    for (const topic of topics) {
-      const suggestedLabel = {
-        id: `suggested_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: topic.name,
-        description: topic.description,
-        confidence: topic.confidence,
-        chatIds: topic.conversationIds || [],
-        dismissed: false
-      };
+        // Skip if no messages
+        if (!chat.messages || chat.messages.length === 0) {
+          console.log(`[Background] Skipping chat ${chat.id} - no messages`);
+          continue;
+        }
 
-      await StorageService.saveSuggestedLabel(suggestedLabel);
-      console.log('[Background] Saved suggested label:', suggestedLabel.name);
+        // STEP 1: Split messages into pairs
+        const messagePairs = [];
+        for (let i = 0; i < chat.messages.length; i += 2) {
+          const userMsg = chat.messages[i];
+          const assistantMsg = chat.messages[i + 1];
+
+          // Only create pair if both user and assistant messages exist
+          if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
+            messagePairs.push({
+              user: userMsg.content,
+              assistant: assistantMsg.content
+            });
+          }
+        }
+
+        console.log(`[Background] Found ${messagePairs.length} message pairs in chat ${chat.id}`);
+
+        // Skip if no valid pairs
+        if (messagePairs.length === 0) {
+          console.log(`[Background] Skipping chat ${chat.id} - no valid message pairs`);
+          continue;
+        }
+
+        // STEP 2: Summarize each message pair
+        const pairSummaries = [];
+        for (let i = 0; i < messagePairs.length; i++) {
+          const pair = messagePairs[i];
+          console.log(`[Background] Summarizing pair ${i + 1}/${messagePairs.length} for chat ${chat.id}`);
+
+          try {
+            const pairSummary = await AIService.summarizeMessagePair(pair.user, pair.assistant);
+            pairSummaries.push(pairSummary);
+            console.log(`[Background] Pair ${i + 1} summary: ${pairSummary.substring(0, 60)}...`);
+          } catch (error) {
+            console.error(`[Background] Error summarizing pair ${i + 1}:`, error);
+            // Use fallback summary
+            pairSummaries.push(`Discussion: ${pair.user.substring(0, 50)}...`);
+          }
+        }
+
+        // STEP 3: Generate overall chat summary from pair summaries
+        console.log(`[Background] Generating overall summary for chat ${chat.id}`);
+        let chatSummary;
+        try {
+          chatSummary = await AIService.summarizeChat(pairSummaries, chat.title);
+          console.log(`[Background] Chat summary: ${chatSummary.substring(0, 100)}...`);
+        } catch (error) {
+          console.error(`[Background] Error generating chat summary:`, error);
+          // Use first pair summary as fallback
+          chatSummary = pairSummaries[0] || chat.title || 'Summary unavailable';
+        }
+
+        // STEP 4: Update chat with summaries
+        await StorageService.updateChat(chat.id, {
+          messagePairSummaries: pairSummaries,
+          chatSummary: chatSummary,
+          processed: true
+        });
+
+        processedCount++;
+        console.log(`[Background] Chat ${processedCount}/${chats.length} processed successfully`);
+
+      } catch (error) {
+        console.error(`[Background] Error processing chat ${chat.id}:`, error);
+        // Continue with next chat instead of failing entirely
+        continue;
+      }
+    }
+
+    console.log(`[Background] Successfully processed ${processedCount}/${chats.length} chats`);
+
+    // STEP 5: Generate labels from all chat summaries
+    if (processedCount > 0) {
+      console.log('[Background] Generating labels from chat summaries...');
+
+      try {
+        // Get updated chats with summaries
+        const updatedChatsObj = await StorageService.getAllChats();
+        const updatedChats = Object.values(updatedChatsObj);
+
+        // Generate labels using Prompt API
+        const labels = await AIService.generateLabelsFromChatSummaries(updatedChats);
+
+        console.log('[Background] Generated', labels.length, 'labels');
+
+        // Save as suggested labels
+        for (const label of labels) {
+          const suggestedLabel = {
+            id: `suggested_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            name: label.name,
+            description: label.description,
+            confidence: label.confidence,
+            chatIds: label.conversationIds || [],
+            dismissed: false
+          };
+
+          await StorageService.saveSuggestedLabel(suggestedLabel);
+          console.log('[Background] Saved suggested label:', suggestedLabel.name);
+        }
+
+      } catch (error) {
+        console.error('[Background] Error generating labels from summaries:', error);
+        // Don't throw - summaries were saved successfully, labels can be regenerated later
+      }
     }
 
     // Update status
     await StorageService.updateSettings({ importStatus: 'idle' });
 
-    console.log('[Background] AI processing complete');
+    console.log('[Background] AI processing pipeline complete');
 
   } catch (error) {
-    console.error('[Background] Error processing chats for labels:', error);
+    console.error('[Background] Error in processing pipeline:', error);
     await StorageService.updateSettings({ importStatus: 'idle' });
     throw error;
   }

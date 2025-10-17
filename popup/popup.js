@@ -51,6 +51,11 @@ const viewLibraryBtn = document.getElementById('viewLibraryBtn');
 const libraryScreen = document.getElementById('libraryScreen');
 const backToWelcomeFromLibraryBtn = document.getElementById('backToWelcomeFromLibraryBtn');
 const refreshBtn = document.getElementById('refreshBtn');
+const aiProcessingSection = document.getElementById('aiProcessingSection');
+const processAIBtn = document.getElementById('processAIBtn');
+const aiProcessingProgress = document.getElementById('aiProcessingProgress');
+const aiProgressFill = document.getElementById('aiProgressFill');
+const aiStatusText = document.getElementById('aiStatusText');
 const suggestedBadge = document.getElementById('suggestedBadge');
 const suggestedList = document.getElementById('suggestedList');
 const createLabelBtn = document.getElementById('createLabelBtn');
@@ -85,27 +90,25 @@ async function initialize() {
 
 /**
  * Check AI availability and update UI
+ * Now checks directly in popup context (not service worker)
  */
 async function checkAIAvailability() {
   try {
-    const response = await chrome.runtime.sendMessage({ type: 'checkAI' });
+    // Call AIService directly (available in popup context)
+    const availability = await AIService.checkAvailability();
 
-    if (response.success) {
-      const availability = response.data;
-
-      if (availability.promptAPI && availability.summarizerAPI) {
-        welcomeAiStatus.textContent = '✓ AI Ready';
-        welcomeAiStatusDot.className = 'status-dot status-ready';
-      } else if (availability.promptAPI) {
-        welcomeAiStatus.textContent = '⚠ AI Partially Available';
-        welcomeAiStatusDot.className = 'status-dot status-partial';
-      } else {
-        welcomeAiStatus.textContent = '✗ AI Unavailable';
-        welcomeAiStatusDot.className = 'status-dot status-unavailable';
-      }
-
-      console.log('[Popup] AI availability:', availability);
+    if (availability.promptAPI && availability.summarizerAPI) {
+      welcomeAiStatus.textContent = '✓ AI Ready';
+      welcomeAiStatusDot.className = 'status-dot status-ready';
+    } else if (availability.promptAPI || availability.summarizerAPI) {
+      welcomeAiStatus.textContent = '⚠ AI Partially Available';
+      welcomeAiStatusDot.className = 'status-dot status-partial';
+    } else {
+      welcomeAiStatus.textContent = '✗ AI Unavailable';
+      welcomeAiStatusDot.className = 'status-dot status-unavailable';
     }
+
+    console.log('[Popup] AI availability:', availability);
   } catch (error) {
     console.error('[Popup] Error checking AI:', error);
     welcomeAiStatus.textContent = 'Error checking AI';
@@ -188,6 +191,7 @@ function setupEventListeners() {
   // Library Screen
   backToWelcomeFromLibraryBtn.addEventListener('click', () => showScreen('welcome'));
   refreshBtn.addEventListener('click', loadLibrary);
+  processAIBtn.addEventListener('click', handleProcessAI);
   createLabelBtn.addEventListener('click', handleCreateLabel);
   settingsBtn.addEventListener('click', handleSettings);
   clearDataBtn.addEventListener('click', handleClearData);
@@ -253,31 +257,17 @@ async function startImport() {
       console.log('[Popup] Claude import complete:', claudeCount);
     }
 
-    // Gemini: 55-80%
+    // Gemini: 55-100%
     if (PLATFORMS.gemini.enabled) {
       statusTextEl.textContent = 'Importing from Gemini...';
       const geminiCount = await importFromPlatformParallel('gemini', (current, total) => {
         geminiCountEl.textContent = current;
-        const progress = 55 + ((current / total) * 25);
+        const progress = 55 + ((current / total) * 45);
         updateProgress(progress);
       });
       platformResults.gemini = geminiCount;
       totalImported += geminiCount;
       console.log('[Popup] Gemini import complete:', geminiCount);
-    }
-
-    // AI Processing: 80-100%
-    if (totalImported > 0) {
-      updateProgress(80);
-      statusTextEl.textContent = 'Analyzing conversations with AI...';
-
-      try {
-        await chrome.runtime.sendMessage({ type: 'processChatsForLabels' });
-        console.log('[Popup] AI processing complete');
-      } catch (error) {
-        console.error('[Popup] AI processing error:', error);
-        statusTextEl.textContent = 'Import complete (AI processing failed)';
-      }
     }
 
     // Complete
@@ -754,10 +744,248 @@ function delay(ms) {
 }
 
 /**
+ * Process all chats for AI-powered label extraction
+ * Runs in popup context (has access to AI APIs)
+ *
+ * @param {Function} onProgress - Progress callback (current, total, message)
+ * @returns {Promise<void>}
+ */
+async function processChatsForLabels(onProgress) {
+  console.log('[Popup] Starting AI processing for label extraction');
+
+  try {
+    // Get all chats from storage
+    const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
+    if (!response.success) {
+      throw new Error('Failed to get chats from storage');
+    }
+
+    const chats = response.data;
+
+    if (chats.length === 0) {
+      console.log('[Popup] No chats to process');
+      return;
+    }
+
+    console.log('[Popup] Processing', chats.length, 'chats with AI summarization pipeline');
+
+    // STEP 1 & 2: Process each chat - summarize message pairs and generate chat summary
+    let processedCount = 0;
+
+    for (const chat of chats) {
+      try {
+        if (onProgress) {
+          onProgress(processedCount, chats.length, `Processing "${chat.title.substring(0, 30)}..."`);
+        }
+
+        console.log(`[Popup] Processing chat ${processedCount + 1}/${chats.length}: ${chat.title}`);
+
+        // Skip if no messages
+        if (!chat.messages || chat.messages.length === 0) {
+          console.log(`[Popup] Skipping chat ${chat.id} - no messages`);
+          continue;
+        }
+
+        // STEP 1: Split messages into pairs
+        const messagePairs = [];
+        for (let i = 0; i < chat.messages.length; i += 2) {
+          const userMsg = chat.messages[i];
+          const assistantMsg = chat.messages[i + 1];
+
+          // Only create pair if both user and assistant messages exist
+          if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
+            messagePairs.push({
+              user: userMsg.content,
+              assistant: assistantMsg.content
+            });
+          }
+        }
+
+        console.log(`[Popup] Found ${messagePairs.length} message pairs in chat ${chat.id}`);
+
+        // Skip if no valid pairs
+        if (messagePairs.length === 0) {
+          console.log(`[Popup] Skipping chat ${chat.id} - no valid message pairs`);
+          continue;
+        }
+
+        // STEP 2: Summarize each message pair
+        const pairSummaries = [];
+        for (let i = 0; i < messagePairs.length; i++) {
+          const pair = messagePairs[i];
+          console.log(`[Popup] Summarizing pair ${i + 1}/${messagePairs.length} for chat ${chat.id}`);
+
+          try {
+            const pairSummary = await AIService.summarizeMessagePair(pair.user, pair.assistant);
+            pairSummaries.push(pairSummary);
+            console.log(`[Popup] Pair ${i + 1} summary: ${pairSummary.substring(0, 60)}...`);
+          } catch (error) {
+            console.error(`[Popup] Error summarizing pair ${i + 1}:`, error);
+            // Use fallback summary
+            pairSummaries.push(`Discussion: ${pair.user.substring(0, 50)}...`);
+          }
+        }
+
+        // STEP 3: Generate overall chat summary from pair summaries
+        console.log(`[Popup] Generating overall summary for chat ${chat.id}`);
+        let chatSummary;
+        try {
+          chatSummary = await AIService.summarizeChat(pairSummaries, chat.title);
+          console.log(`[Popup] Chat summary: ${chatSummary.substring(0, 100)}...`);
+        } catch (error) {
+          console.error(`[Popup] Error generating chat summary:`, error);
+          // Use first pair summary as fallback
+          chatSummary = pairSummaries[0] || chat.title || 'Summary unavailable';
+        }
+
+        // STEP 4: Update chat with summaries via service worker
+        await chrome.runtime.sendMessage({
+          type: 'updateChat',
+          data: {
+            chatId: chat.id,
+            updates: {
+              messagePairSummaries: pairSummaries,
+              chatSummary: chatSummary,
+              processed: true
+            }
+          }
+        });
+
+        processedCount++;
+        console.log(`[Popup] Chat ${processedCount}/${chats.length} processed successfully`);
+
+      } catch (error) {
+        console.error(`[Popup] Error processing chat ${chat.id}:`, error);
+        // Continue with next chat instead of failing entirely
+        continue;
+      }
+    }
+
+    console.log(`[Popup] Successfully processed ${processedCount}/${chats.length} chats`);
+
+    if (onProgress) {
+      onProgress(processedCount, chats.length, 'Generating labels from summaries...');
+    }
+
+    // STEP 5: Generate labels from all chat summaries
+    if (processedCount > 0) {
+      console.log('[Popup] Generating labels from chat summaries...');
+
+      try {
+        // Get updated chats with summaries
+        const updatedResponse = await chrome.runtime.sendMessage({ type: 'getAllChats' });
+        if (!updatedResponse.success) {
+          throw new Error('Failed to get updated chats');
+        }
+
+        const updatedChats = updatedResponse.data;
+
+        // Generate labels using Prompt API
+        const labels = await AIService.generateLabelsFromChatSummaries(updatedChats);
+
+        console.log('[Popup] Generated', labels.length, 'labels');
+
+        // Save labels via service worker
+        for (const label of labels) {
+          const suggestedLabel = {
+            id: `suggested_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+            name: label.name,
+            description: label.description,
+            confidence: label.confidence,
+            chatIds: label.conversationIds || [],
+            dismissed: false
+          };
+
+          await chrome.runtime.sendMessage({
+            type: 'saveSuggestedLabel',
+            data: suggestedLabel
+          });
+          console.log('[Popup] Saved suggested label:', suggestedLabel.name);
+        }
+
+      } catch (error) {
+        console.error('[Popup] Error generating labels from summaries:', error);
+        // Don't throw - summaries were saved successfully, labels can be regenerated later
+      }
+    }
+
+    console.log('[Popup] AI processing pipeline complete');
+
+  } catch (error) {
+    console.error('[Popup] Error in AI processing pipeline:', error);
+    throw error;
+  }
+}
+
+/**
+ * Handle AI processing button click
+ */
+async function handleProcessAI() {
+  console.log('[Popup] Starting AI processing from library screen');
+
+  try {
+    // Disable button and show progress
+    processAIBtn.disabled = true;
+    processAIBtn.textContent = 'Processing...';
+    aiProcessingProgress.style.display = 'block';
+    aiProgressFill.style.width = '0%';
+    aiStatusText.textContent = 'Initializing AI processing...';
+
+    // Run AI processing
+    await processChatsForLabels((current, total, message) => {
+      // Update progress
+      const progress = (current / total) * 100;
+      aiProgressFill.style.width = `${progress}%`;
+      aiStatusText.textContent = message || `Processing ${current}/${total} chats...`;
+    });
+
+    // Success
+    aiProgressFill.style.width = '100%';
+    aiStatusText.textContent = 'AI processing complete!';
+
+    // Wait a moment then hide progress and refresh library
+    setTimeout(async () => {
+      aiProcessingProgress.style.display = 'none';
+      processAIBtn.disabled = false;
+      processAIBtn.textContent = 'Process with AI';
+      await loadLibrary();
+    }, 2000);
+
+  } catch (error) {
+    console.error('[Popup] AI processing error:', error);
+    aiStatusText.textContent = 'Error: ' + error.message;
+    processAIBtn.disabled = false;
+    processAIBtn.textContent = 'Process with AI';
+
+    // Show error for 5 seconds then hide
+    setTimeout(() => {
+      aiProcessingProgress.style.display = 'none';
+    }, 5000);
+  }
+}
+
+/**
  * Load library screen data
  */
 async function loadLibrary() {
   try {
+    // Load all chats first to check if we need to show AI processing section
+    await loadAllChats();
+
+    // Check if there are unprocessed chats
+    const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
+    if (response.success) {
+      const chats = Object.values(response.data);
+      const unprocessedChats = chats.filter(chat => !chat.processed);
+
+      // Show AI processing section if there are unprocessed chats
+      if (unprocessedChats.length > 0) {
+        aiProcessingSection.style.display = 'block';
+      } else {
+        aiProcessingSection.style.display = 'none';
+      }
+    }
+
     // Load suggested labels
     const suggestedResponse = await chrome.runtime.sendMessage({ type: 'getAllSuggestedLabels' });
     if (suggestedResponse.success) {
@@ -772,9 +1000,6 @@ async function loadLibrary() {
       const labels = Object.values(labelsResponse.data);
       renderLabels(labels);
     }
-
-    // Load all chats
-    await loadAllChats();
 
   } catch (error) {
     console.error('[Popup] Error loading library:', error);

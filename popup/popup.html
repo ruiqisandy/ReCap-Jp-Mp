@@ -133,6 +133,33 @@
       </header>
 
       <main class="library-main">
+        <!-- AI Processing Section -->
+        <section class="library-section" id="aiProcessingSection" style="display: none;">
+          <div class="ai-processing-card">
+            <div class="ai-processing-header">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color: #10a37f;">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <div>
+                <h3>AI-Powered Analysis</h3>
+                <p>Generate summaries and label suggestions from your conversations</p>
+              </div>
+            </div>
+            <button id="processAIBtn" class="btn btn-primary">
+              <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2"/>
+                <path d="M10 6V10L13 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              Process with AI
+            </button>
+            <div id="aiProcessingProgress" style="display: none;">
+              <div class="progress-bar" style="margin-top: 12px;">
+                <div class="progress-fill" id="aiProgressFill"></div>
+              </div>
+              <p class="status-text" id="aiStatusText" style="margin-top: 8px; font-size: 13px;">Processing...</p>
+            </div>
+          </div>
+        </section>
         <!-- Suggested Labels Section -->
         <section class="library-section">
           <div class="section-header">
@@ -205,6 +232,7 @@
 
   </div>
 
+  <script src="../lib/ai-service.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

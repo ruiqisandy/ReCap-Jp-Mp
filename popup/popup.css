@@ -758,3 +758,41 @@ body {
 .pulse {
   animation: pulse 2s ease-in-out infinite;
 }
+
+/* ========================================
+   AI PROCESSING CARD
+   ======================================== */
+
+.ai-processing-card {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #bae6fd;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ai-processing-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.ai-processing-header svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ai-processing-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-bottom: 4px;
+}
+
+.ai-processing-header p {
+  font-size: 13px;
+  color: #0369a1;
+  line-height: 1.4;
+}
