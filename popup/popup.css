@@ -285,13 +285,26 @@ body {
   color: white;
   padding: 20px 24px;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
+  position: relative;
 }
 
 .library-header h1 {
   font-size: 24px;
   font-weight: 700;
+}
+
+.library-header .btn-icon-only {
+  position: absolute;
+}
+
+.library-header .btn-icon-only:first-child {
+  left: 16px;
+}
+
+.library-header .btn-icon-only:last-child {
+  right: 16px;
 }
 
 .library-main {
@@ -349,8 +362,9 @@ body {
   transition: all 0.2s ease;
   cursor: pointer;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .label-item:hover {
@@ -367,6 +381,7 @@ body {
   color: #9ca3af;
   flex-shrink: 0;
   transition: transform 0.2s ease, color 0.2s ease;
+  margin-top: 2px;
 }
 
 .label-item.clickable:hover .label-arrow {
@@ -380,9 +395,11 @@ body {
 }
 
 .label-content {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .label-content h3 {
@@ -543,12 +560,15 @@ body {
 
 .badge-small {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 4px 8px;
   border-radius: 10px;
   font-size: 11px;
   font-weight: 600;
   background: #e0e7ff;
   color: #4338ca;
+  width: 65px;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 /* ========================================
