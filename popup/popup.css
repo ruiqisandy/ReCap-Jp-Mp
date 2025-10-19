@@ -748,6 +748,93 @@ body {
   height: 14px;
 }
 
+/* Chat summary headline */
+.chat-item-summary-headline {
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.5;
+  margin: 8px 0;
+  padding: 0 8px;
+}
+
+/* Expand button */
+.chat-item-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-left: auto;
+}
+
+.chat-item-expand-btn:hover {
+  background: #e5e7eb;
+  border-color: #9ca3af;
+  color: #374151;
+}
+
+.chevron-icon {
+  transition: transform 0.3s ease;
+}
+
+/* Expansion container */
+.chat-item-expansion {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.3s ease, opacity 0.3s ease, margin-top 0.3s ease;
+  background: #f9fafb;
+  border-radius: 6px;
+  margin-top: 0;
+}
+
+.chat-item-expansion.expanded {
+  max-height: 5000px;
+  opacity: 1;
+  margin-top: 12px;
+  padding: 12px;
+  overflow: visible;
+}
+
+.chat-item-expansion-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.chat-item-pair-summaries {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-item-pair-summary {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #4b5563;
+}
+
+.pair-number {
+  font-weight: 600;
+  color: #6b7280;
+  flex-shrink: 0;
+  min-width: 20px;
+}
+
+.pair-text {
+  flex: 1;
+}
+
 /* ========================================
    SCROLLBAR
    ======================================== */
@@ -1150,4 +1237,39 @@ body {
   font-size: 13px;
   color: #0369a1;
   line-height: 1.4;
+}
+
+/* ========================================
+   DRAG AND DROP STYLES
+   ======================================== */
+
+.label-drag-handle {
+  cursor: grab;
+  color: #9ca3af;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin: -4px 0 -4px -4px;
+  transition: color 0.2s ease;
+}
+
+.label-drag-handle:hover {
+  color: #6b7280;
+}
+
+.label-drag-handle:active {
+  cursor: grabbing;
+}
+
+.label-item.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.label-item.drag-over {
+  border-color: #667eea;
+  border-width: 2px;
+  background: #f0f9ff;
+  transform: scale(1.02);
 }

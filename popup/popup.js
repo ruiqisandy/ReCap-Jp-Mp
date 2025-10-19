@@ -1212,6 +1212,9 @@ function renderChatList(chats) {
       year: 'numeric'
     });
 
+    const chatSummary = chat.chatSummary || 'No summary available';
+    const hasPairSummaries = chat.messagePairSummaries && chat.messagePairSummaries.length > 0;
+
     return `
       <div class="chat-item" data-id="${chat.id}" data-platform="${chat.platform}">
         <div class="chat-item-header">
@@ -1224,10 +1227,32 @@ function renderChatList(chats) {
             </svg>
           </button>
         </div>
+        <div class="chat-item-summary-headline">${chatSummary}</div>
         <div class="chat-item-meta">
           <span class="chat-item-messages">${messageCount} messages</span>
           <span class="chat-item-date">${date}</span>
+          ${hasPairSummaries ? `
+            <button class="chat-item-expand-btn" data-chat-id="${chat.id}" title="Show message pair summaries">
+              <svg class="chevron-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Details
+            </button>
+          ` : ''}
         </div>
+        ${hasPairSummaries ? `
+          <div class="chat-item-expansion" data-chat-id="${chat.id}">
+            <div class="chat-item-expansion-header">Message Pair Summaries:</div>
+            <div class="chat-item-pair-summaries">
+              ${chat.messagePairSummaries.map((summary, index) => `
+                <div class="chat-item-pair-summary">
+                  <span class="pair-number">${index + 1}.</span>
+                  <span class="pair-text">${summary}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }).join('');
@@ -1242,6 +1267,29 @@ function renderChatList(chats) {
         chrome.tabs.create({ url, active: true });
       }
     });
+  });
+
+  // Add event listeners for expand/collapse buttons
+  const expandButtons = chatList.querySelectorAll('.chat-item-expand-btn');
+  expandButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const chatId = btn.getAttribute('data-chat-id');
+      toggleChatExpansion(chatId, btn, 'library');
+    });
+  });
+
+  // Restore expansion states
+  expandedLibraryChats.forEach(chatId => {
+    const expansion = chatList.querySelector(`.chat-item-expansion[data-chat-id="${chatId}"]`);
+    const button = chatList.querySelector(`.chat-item-expand-btn[data-chat-id="${chatId}"]`);
+    if (expansion && button) {
+      expansion.classList.add('expanded');
+      const chevron = button.querySelector('.chevron-icon');
+      if (chevron) {
+        chevron.style.transform = 'rotate(180deg)';
+      }
+    }
   });
 }
 
@@ -1263,6 +1311,67 @@ function filterChats(platform) {
   }
 
   renderChatList(filteredChats);
+}
+
+/**
+ * Toggle expansion of chat item to show/hide message pair summaries
+ * @param {string} chatId - Chat ID
+ * @param {HTMLElement} button - The expand button element
+ * @param {string} context - 'library' or 'label' to track which screen we're on
+ */
+function toggleChatExpansion(chatId, button, context = 'library') {
+  console.log(`[Popup] toggleChatExpansion called: chatId=${chatId}, context=${context}`);
+
+  // Find the expansion container
+  const expansion = document.querySelector(`.chat-item-expansion[data-chat-id="${chatId}"]`);
+
+  if (!expansion) {
+    console.warn('[Popup] No expansion element found for chat:', chatId);
+    // Log all expansion elements to see what's available
+    const allExpansions = document.querySelectorAll('.chat-item-expansion');
+    console.log('[Popup] Available expansion elements:', allExpansions.length);
+    allExpansions.forEach(el => {
+      console.log('  - expansion with data-chat-id:', el.getAttribute('data-chat-id'));
+    });
+    return;
+  }
+
+  console.log('[Popup] Found expansion element:', expansion);
+  console.log('[Popup] Expansion current classes:', expansion.className);
+  console.log('[Popup] Expansion innerHTML length:', expansion.innerHTML.length);
+  console.log('[Popup] Expansion computed display:', window.getComputedStyle(expansion).display);
+  console.log('[Popup] Expansion computed maxHeight:', window.getComputedStyle(expansion).maxHeight);
+  console.log('[Popup] Expansion computed opacity:', window.getComputedStyle(expansion).opacity);
+
+  // Find the chevron icon within the button
+  const chevron = button.querySelector('.chevron-icon');
+
+  // Determine which Set to use based on context
+  const expandedSet = context === 'label' ? expandedLabelChats : expandedLibraryChats;
+
+  // Toggle the expanded state
+  const isExpanded = expansion.classList.contains('expanded');
+
+  if (isExpanded) {
+    // Collapse
+    expansion.classList.remove('expanded');
+    if (chevron) {
+      chevron.style.transform = 'rotate(0deg)';
+    }
+    expandedSet.delete(chatId);
+    console.log('[Popup] Collapsed chat:', chatId);
+  } else {
+    // Expand
+    expansion.classList.add('expanded');
+    if (chevron) {
+      chevron.style.transform = 'rotate(180deg)';
+    }
+    expandedSet.add(chatId);
+    console.log('[Popup] Expanded chat:', chatId);
+    console.log('[Popup] After adding expanded class:', expansion.className);
+    console.log('[Popup] After expand - computed maxHeight:', window.getComputedStyle(expansion).maxHeight);
+    console.log('[Popup] After expand - computed opacity:', window.getComputedStyle(expansion).opacity);
+  }
 }
 
 /**
@@ -1318,11 +1427,23 @@ function renderLabels(labels) {
     return;
   }
 
+  // Sort labels by position (if available), otherwise maintain original order
+  labels.sort((a, b) => {
+    const posA = typeof a.position === 'number' ? a.position : 999999;
+    const posB = typeof b.position === 'number' ? b.position : 999999;
+    return posA - posB;
+  });
+
   // Show clear button when there are accepted labels
   clearAcceptedBtn.style.display = 'inline-flex';
 
   labelList.innerHTML = labels.map(label => `
-    <div class="label-item clickable" data-id="${label.id}">
+    <div class="label-item clickable" data-id="${label.id}" draggable="true">
+      <div class="label-drag-handle">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" opacity="0.4">
+          <path d="M6 4h.01M6 8h.01M6 12h.01M10 4h.01M10 8h.01M10 12h.01" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      </div>
       <div class="label-content">
         <h3>${label.name}</h3>
         <span class="badge-small">${label.chatIds.length} chats</span>
@@ -1335,11 +1456,126 @@ function renderLabels(labels) {
 
   // Add click listeners to navigate to label detail page
   labelList.querySelectorAll('.label-item').forEach(item => {
-    item.addEventListener('click', () => {
+    item.addEventListener('click', (e) => {
+      // Don't navigate if user is dragging
+      if (e.target.closest('.label-drag-handle')) {
+        return;
+      }
       const labelId = item.getAttribute('data-id');
       openLabelDetail(labelId);
     });
   });
+
+  // Setup drag and drop
+  setupLabelDragAndDrop();
+}
+
+/**
+ * Setup drag and drop for label reordering
+ */
+function setupLabelDragAndDrop() {
+  const labelItems = labelList.querySelectorAll('.label-item');
+  let draggedElement = null;
+  let draggedOverElement = null;
+
+  labelItems.forEach(item => {
+    // Drag start
+    item.addEventListener('dragstart', (e) => {
+      draggedElement = item;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', item.innerHTML);
+    });
+
+    // Drag end
+    item.addEventListener('dragend', (e) => {
+      item.classList.remove('dragging');
+      // Remove all drag-over classes
+      labelItems.forEach(i => i.classList.remove('drag-over'));
+      draggedElement = null;
+      draggedOverElement = null;
+    });
+
+    // Drag over
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      if (draggedElement && draggedElement !== item) {
+        item.classList.add('drag-over');
+        draggedOverElement = item;
+      }
+    });
+
+    // Drag leave
+    item.addEventListener('dragleave', (e) => {
+      item.classList.remove('drag-over');
+    });
+
+    // Drop
+    item.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      item.classList.remove('drag-over');
+
+      if (draggedElement && draggedElement !== item) {
+        // Reorder DOM elements
+        const allItems = Array.from(labelList.querySelectorAll('.label-item'));
+        const draggedIndex = allItems.indexOf(draggedElement);
+        const targetIndex = allItems.indexOf(item);
+
+        if (draggedIndex < targetIndex) {
+          item.parentNode.insertBefore(draggedElement, item.nextSibling);
+        } else {
+          item.parentNode.insertBefore(draggedElement, item);
+        }
+
+        // Save new order to storage
+        await saveLabelOrder();
+      }
+    });
+  });
+}
+
+/**
+ * Save label order to storage
+ */
+async function saveLabelOrder() {
+  try {
+    const labelItems = labelList.querySelectorAll('.label-item');
+    const labelOrder = Array.from(labelItems).map(item => item.getAttribute('data-id'));
+
+    console.log('[Popup] Saving label order:', labelOrder);
+
+    // Get all labels
+    const response = await chrome.runtime.sendMessage({ type: 'getAllLabels' });
+    if (!response.success) {
+      throw new Error('Failed to get labels');
+    }
+
+    const labels = Object.values(response.data);
+
+    // Update each label with its new position
+    for (let i = 0; i < labelOrder.length; i++) {
+      const labelId = labelOrder[i];
+      const label = labels.find(l => l.id === labelId);
+
+      if (label) {
+        await chrome.runtime.sendMessage({
+          type: 'updateLabel',
+          data: {
+            labelId: labelId,
+            updates: { position: i }
+          }
+        });
+      }
+    }
+
+    console.log('[Popup] Label order saved successfully');
+  } catch (error) {
+    console.error('[Popup] Error saving label order:', error);
+  }
 }
 
 /**
@@ -1423,6 +1659,10 @@ async function openLabelDetail(labelId) {
 // Global state for label view
 let currentLabelId = null;
 let currentLabelChats = [];
+
+// Track expanded chat states
+let expandedLibraryChats = new Set();
+let expandedLabelChats = new Set();
 
 /**
  * Load label view screen
@@ -1535,7 +1775,11 @@ function renderLabelChatList(chats) {
       year: 'numeric'
     });
 
-    const summary = chat.chatSummary || 'No summary available';
+    const chatSummary = chat.chatSummary || 'No summary available';
+    const hasPairSummaries = chat.messagePairSummaries && chat.messagePairSummaries.length > 0;
+
+    // Debug logging
+    console.log(`[Popup] Rendering chat ${chat.id}: hasPairSummaries=${hasPairSummaries}, pairCount=${chat.messagePairSummaries?.length || 0}`);
 
     return `
       <div class="chat-item" data-id="${chat.id}" data-platform="${chat.platform}">
@@ -1549,11 +1793,32 @@ function renderLabelChatList(chats) {
             </svg>
           </button>
         </div>
-        <div class="chat-item-summary">${summary.substring(0, 150)}${summary.length > 150 ? '...' : ''}</div>
+        <div class="chat-item-summary-headline">${chatSummary}</div>
         <div class="chat-item-meta">
           <span class="chat-item-messages">${messageCount} messages</span>
           <span class="chat-item-date">${date}</span>
+          ${hasPairSummaries ? `
+            <button class="chat-item-expand-btn" data-chat-id="${chat.id}" title="Show message pair summaries">
+              <svg class="chevron-icon" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                <path d="M3 4.5L6 7.5L9 4.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Details
+            </button>
+          ` : ''}
         </div>
+        ${hasPairSummaries ? `
+          <div class="chat-item-expansion" data-chat-id="${chat.id}">
+            <div class="chat-item-expansion-header">Message Pair Summaries:</div>
+            <div class="chat-item-pair-summaries">
+              ${chat.messagePairSummaries.map((summary, index) => `
+                <div class="chat-item-pair-summary">
+                  <span class="pair-number">${index + 1}.</span>
+                  <span class="pair-text">${summary}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   }).join('');
@@ -1568,6 +1833,29 @@ function renderLabelChatList(chats) {
         chrome.tabs.create({ url, active: true });
       }
     });
+  });
+
+  // Add event listeners for expand/collapse buttons
+  const expandButtons = labelChatList.querySelectorAll('.chat-item-expand-btn');
+  expandButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const chatId = btn.getAttribute('data-chat-id');
+      toggleChatExpansion(chatId, btn, 'label');
+    });
+  });
+
+  // Restore expansion states
+  expandedLabelChats.forEach(chatId => {
+    const expansion = labelChatList.querySelector(`.chat-item-expansion[data-chat-id="${chatId}"]`);
+    const button = labelChatList.querySelector(`.chat-item-expand-btn[data-chat-id="${chatId}"]`);
+    if (expansion && button) {
+      expansion.classList.add('expanded');
+      const chevron = button.querySelector('.chevron-icon');
+      if (chevron) {
+        chevron.style.transform = 'rotate(180deg)';
+      }
+    }
   });
 }
 

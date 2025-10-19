@@ -134,6 +134,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'updateLabel':
+          await StorageService.updateLabel(message.data.labelId, message.data.updates);
+          sendResponse({ success: true });
+          break;
+
         default:
           console.warn('[Background] Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -372,6 +377,19 @@ async function handleAcceptSuggestedLabel(data) {
     throw new Error('Suggested label not found');
   }
 
+  // Get current labels to determine next position
+  const existingLabels = await StorageService.getAllLabels();
+  const existingLabelsArray = Object.values(existingLabels);
+
+  // Find the highest position value, or default to 0
+  let maxPosition = -1;
+  for (const label of existingLabelsArray) {
+    if (typeof label.position === 'number' && label.position > maxPosition) {
+      maxPosition = label.position;
+    }
+  }
+  const nextPosition = maxPosition + 1;
+
   // Create actual label
   const newLabel = {
     id: `label_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -380,6 +398,7 @@ async function handleAcceptSuggestedLabel(data) {
     chatIds: suggestedLabel.chatIds,
     created: Date.now(),
     updated: Date.now(),
+    position: nextPosition,
     mindMapData: null,
     summary: null,
     quizData: null
