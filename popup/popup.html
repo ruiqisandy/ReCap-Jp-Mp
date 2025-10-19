@@ -295,6 +295,7 @@
           <button class="tab-button" data-tab="chatlist">Chat List</button>
           <button class="tab-button" data-tab="mindmap">Mind Map</button>
           <button class="tab-button" data-tab="quiz">Quiz</button>
+          <button class="tab-button" data-tab="bulletpoints">Bullet Points</button>
         </div>
 
         <!-- Tab Content -->
@@ -365,6 +366,24 @@
               </svg>
               <h3>Quiz Generation</h3>
               <p>Coming soon! Test your knowledge with AI-generated questions from your conversations.</p>
+            </div>
+          </div>
+
+          <!-- Bullet Points Tab -->
+          <div id="bulletpointsTab" class="tab-panel">
+            <div id="bulletpointsContent" class="bulletpoints-content">
+              <p class="bulletpoints-placeholder">Click "Generate Bullet Points" to create a structured mindmap-style summary from all conversations in this label.</p>
+            </div>
+            <div class="bulletpoints-actions">
+              <button id="generateBulletPointsBtn" class="btn btn-primary btn-small">
+                <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+                  <circle cx="4" cy="2" r="1.5" fill="currentColor" stroke="none"/>
+                  <circle cx="4" cy="7" r="1.5" fill="currentColor" stroke="none"/>
+                  <circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+                  <path d="M7 2h6M7 7h6M7 12h6" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Generate Bullet Points
+              </button>
             </div>
           </div>
         </div>

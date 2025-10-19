@@ -62,6 +62,8 @@ const summaryContent = document.getElementById('summaryContent');
 const generateSummaryBtn = document.getElementById('generateSummaryBtn');
 const labelChatList = document.getElementById('labelChatList');
 const chatlistFilters = document.querySelectorAll('.chatlist-filters .filter-btn');
+const bulletpointsContent = document.getElementById('bulletpointsContent');
+const generateBulletPointsBtn = document.getElementById('generateBulletPointsBtn');
 
 // Summarization section
 const summarizationSection = document.getElementById('summarizationSection');
@@ -237,6 +239,7 @@ function setupEventListeners() {
     loadLibrary();
   });
   generateSummaryBtn.addEventListener('click', handleGenerateLabelSummary);
+  generateBulletPointsBtn.addEventListener('click', handleGenerateBulletPoints);
 
   // Tab buttons
   tabButtons.forEach(btn => {
@@ -1459,6 +1462,15 @@ async function loadLabelView(labelId) {
       summaryContent.innerHTML = `<p class="summary-placeholder">Click "Generate Summary" to create an aggregated summary from all conversations in this label.</p>`;
     }
 
+    // Load bullet points if exists
+    if (label.bulletPoints) {
+      bulletpointsContent.innerHTML = label.bulletPoints;
+      // Attach click handlers to loaded bullet point links
+      attachBulletPointsClickHandlers();
+    } else {
+      bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder">Click "Generate Bullet Points" to create a structured mindmap-style summary from all conversations in this label.</p>`;
+    }
+
     // Reset to summary tab
     switchTab('summary');
 
@@ -1491,7 +1503,8 @@ function switchTab(tabName) {
     summary: document.getElementById('summaryTab'),
     chatlist: document.getElementById('chatlistTab'),
     mindmap: document.getElementById('mindmapTab'),
-    quiz: document.getElementById('quizTab')
+    quiz: document.getElementById('quizTab'),
+    bulletpoints: document.getElementById('bulletpointsTab')
   };
 
   Object.keys(panels).forEach(key => {
@@ -1622,6 +1635,89 @@ async function handleGenerateLabelSummary() {
       Generate Summary
     `;
   }
+}
+
+/**
+ * Handle generate bullet points
+ */
+async function handleGenerateBulletPoints() {
+  console.log('[Popup] Generating bullet points...');
+
+  try {
+    // Disable button
+    generateBulletPointsBtn.disabled = true;
+    generateBulletPointsBtn.textContent = 'Generating...';
+
+    // Prepare chat objects with full context (not just flat summaries)
+    const chatsWithContext = currentLabelChats
+      .filter(chat => chat.chatSummary && chat.messagePairSummaries && chat.messagePairSummaries.length > 0)
+      .map(chat => ({
+        id: chat.id,
+        title: chat.title,
+        url: chat.url,
+        platform: chat.platform,
+        chatSummary: chat.chatSummary,
+        messagePairSummaries: chat.messagePairSummaries
+      }));
+
+    if (chatsWithContext.length === 0) {
+      throw new Error('No chats with summaries available. Please run summarization first.');
+    }
+
+    // Show loading state
+    bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder">Generating AI-powered categorized bullet points from ${chatsWithContext.length} conversations...</p>`;
+
+    // Get label name for context
+    const label = await StorageService.getLabel(currentLabelId);
+    const labelName = label ? label.name : '';
+
+    // Use AI to create structured bullet points with chat links
+    const bulletPointsHTML = await AIService.generateBulletPoints(chatsWithContext, labelName);
+
+    bulletpointsContent.innerHTML = bulletPointsHTML;
+
+    // Save bullet points to label
+    await StorageService.updateLabel(currentLabelId, {
+      bulletPoints: bulletPointsHTML
+    });
+
+    // Attach click handlers to chat links
+    attachBulletPointsClickHandlers();
+
+    console.log('[Popup] Bullet points generated successfully');
+
+  } catch (error) {
+    console.error('[Popup] Error generating bullet points:', error);
+    bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder" style="color: #ef4444;">Error: ${error.message}</p>`;
+  } finally {
+    // Re-enable button
+    generateBulletPointsBtn.disabled = false;
+    generateBulletPointsBtn.innerHTML = `
+      <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+        <circle cx="4" cy="2" r="1.5" fill="currentColor" stroke="none"/>
+        <circle cx="4" cy="7" r="1.5" fill="currentColor" stroke="none"/>
+        <circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+        <path d="M7 2h6M7 7h6M7 12h6" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      Generate Bullet Points
+    `;
+  }
+}
+
+/**
+ * Attach click handlers to bullet point chat links
+ */
+function attachBulletPointsClickHandlers() {
+  const chatLinks = bulletpointsContent.querySelectorAll('.chat-link');
+  chatLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const url = link.getAttribute('href');
+      if (url) {
+        chrome.tabs.create({ url, active: true });
+      }
+    });
+  });
 }
 
 /**
