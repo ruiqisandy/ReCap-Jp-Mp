@@ -568,6 +568,13 @@ body {
   border-color: #fbbf24;
 }
 
+.workflow-hint {
+  font-size: 13px;
+  color: #92400e;
+  text-align: center;
+  margin: 0;
+}
+
 .workflow-card-header h3 {
   font-size: 16px;
   font-weight: 600;
@@ -599,6 +606,13 @@ body {
   height: 8px;
   border-radius: 4px;
   background: rgba(234, 179, 8, 0.3);
+}
+
+.workflow-suggestions-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .empty-state {

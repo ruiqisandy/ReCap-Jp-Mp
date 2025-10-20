@@ -920,6 +920,19 @@ async function summarizeChats(onProgress) {
         // Skip if no valid pairs
         if (messagePairs.length === 0) {
           console.log(`[Popup] Skipping chat ${chat.id} - no valid message pairs`);
+          await chrome.runtime.sendMessage({
+            type: 'updateChat',
+            data: {
+              chatId: chat.id,
+              updates: {
+                messagePairSummaries: [],
+                chatSummary: chat.title || 'Summary unavailable',
+                processed: true,
+                summarizationFailed: true
+              }
+            }
+          });
+          processedCount++;
           continue;
         }
 
@@ -1032,38 +1045,25 @@ async function generateLabelsForMode({ mode, preferredLabelNames = [], onProgres
       );
     }
 
-    const labels = await AIService.generateLabelsFromChatSummaries(
+    const rawLabels = await AIService.generateLabelsFromChatSummaries(
       chatsWithSummaries,
       isPreferredMode ? preferredLabelNames : []
     );
 
-    if (!Array.isArray(labels)) {
+    if (!Array.isArray(rawLabels)) {
       throw new Error('AI returned an unexpected response while generating labels.');
     }
 
-    console.log(`[Popup] Label generation returned ${labels.length} labels`);
-
-    if (onProgress) {
-      onProgress(2, stepsTotal, 'Saving labels...');
-    }
-
-    try {
-      await chrome.runtime.sendMessage({ type: 'clearSuggestedLabels' });
-      console.log('[Popup] Cleared previous suggested labels before saving new ones');
-    } catch (clearError) {
-      console.warn('[Popup] Unable to clear previous suggested labels:', clearError);
-    }
+    console.log(`[Popup] Label generation returned ${rawLabels.length} labels`);
 
     const indexToChatId = chatsWithSummaries.map(chat => chat.id);
     const chatIdSet = new Set(indexToChatId);
-
-    let savedCount = 0;
-    let matchedChatCount = 0;
     const timestamp = Date.now();
 
-    for (const label of labels) {
+    // Normalize conversation IDs and filter/sort before saving
+    let processedLabels = rawLabels.map(label => {
       if (!label || !label.name) {
-        continue;
+        return null;
       }
 
       const rawConversationIds = Array.isArray(label.conversationIds) ? label.conversationIds : [];
@@ -1088,14 +1088,48 @@ async function generateLabelsForMode({ mode, preferredLabelNames = [], onProgres
           ? (uniqueChatIds.length > 0 ? 0.75 : 0)
           : 0.7;
 
-      matchedChatCount += uniqueChatIds.length;
-
-      const suggestedLabel = {
-        id: `${mode}_${timestamp}_${Math.random().toString(36).substring(2, 11)}`,
+      return {
+        idPrefix: mode,
+        timestamp,
         name: label.name,
         description,
         confidence,
-        chatIds: uniqueChatIds,
+        chatIds: uniqueChatIds
+      };
+    }).filter(Boolean);
+
+    if (isPreferredMode) {
+      processedLabels = processedLabels
+        .filter(label => label.chatIds.length > 1)
+        .sort((a, b) => (b.chatIds.length || 0) - (a.chatIds.length || 0));
+    }
+
+    if (!isPreferredMode) {
+      processedLabels = processedLabels.sort((a, b) => (b.chatIds.length || 0) - (a.chatIds.length || 0));
+    }
+
+    if (onProgress) {
+      onProgress(2, stepsTotal, 'Saving labels...');
+    }
+
+    try {
+      await chrome.runtime.sendMessage({ type: 'clearSuggestedLabels' });
+      console.log('[Popup] Cleared previous suggested labels before saving new ones');
+    } catch (clearError) {
+      console.warn('[Popup] Unable to clear previous suggested labels:', clearError);
+    }
+
+    let savedCount = 0;
+    let matchedChatCount = 0;
+    for (const label of processedLabels) {
+      matchedChatCount += label.chatIds.length;
+
+      const suggestedLabel = {
+        id: `${label.idPrefix}_${label.timestamp}_${Math.random().toString(36).substring(2, 11)}`,
+        name: label.name,
+        description: label.description,
+        confidence: label.confidence,
+        chatIds: label.chatIds,
         dismissed: false
       };
 
@@ -1173,8 +1207,6 @@ async function runWorkflowClassification(mode) {
     }
 
     showToast('Successfully added!', 'success');
-    resetWorkflowProgress();
-    showScreen('library');
     await loadLibrary();
 
     return { labelCount, matchedChatCount };
@@ -2096,6 +2128,8 @@ function updateClassificationAvailability(processedCount) {
  * Render suggested labels
  */
 function renderSuggestedLabels(labels) {
+  labels = [...labels].sort((a, b) => (b.chatIds?.length || 0) - (a.chatIds?.length || 0));
+
   if (labels.length === 0) {
     suggestedList.innerHTML = '<div class="empty-state"><p>No suggestions yet. Run AI processing to generate label suggestions.</p></div>';
     clearSuggestedBtn.style.display = 'none';

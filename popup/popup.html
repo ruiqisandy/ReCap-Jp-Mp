@@ -155,27 +155,6 @@
             <p class="status-text" id="summarizeStatusText">Processing...</p>
           </div>
         </section>
-        <!-- Suggested Labels Section -->
-        <section class="library-section">
-          <div class="section-header">
-            <h2>Suggested Labels</h2>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge" id="suggestedBadge">0</span>
-              <button id="clearSuggestedBtn" class="btn btn-small" style="display: none; background: #ef4444; color: white;">
-                <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
-                  <path d="M1 3.5h12M5.5 1h3M5.5 13h3M5.5 5.5v5M8.5 5.5v5" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-                Clear All
-              </button>
-            </div>
-          </div>
-          <div class="list-container" id="suggestedList">
-            <div class="empty-state">
-              <p>No suggestions yet. Import chats and run AI processing to get started.</p>
-            </div>
-          </div>
-        </section>
-
         <!-- Your Library Section -->
         <section class="library-section">
           <div class="section-header">
@@ -260,8 +239,8 @@
         <section class="workflow-section" id="preferredLabelsSection">
           <div class="workflow-card">
             <div class="workflow-card-header">
-              <h3>Step 1: Choose Preferred Labels</h3>
-              <p>Save the topics you care about most. We’ll only sort chats into these labels.</p>
+              <h3>Preferred Labels</h3>
+              <p>Tell us the topics you care about. Chats will be grouped only into these labels.</p>
             </div>
             <div class="preferred-labels-wrapper">
               <div class="preferred-labels-controls header">
@@ -298,15 +277,36 @@
         <!-- Classification Status Section -->
         <section class="workflow-section" id="labelGenerationSection">
           <div class="workflow-card highlight">
-            <div class="workflow-card-header">
-              <h3 id="labelGenerationTitle">Step 2: Categorize Chats</h3>
-              <p id="labelGenerationSubtitle">We’ll analyze your summaries and organize chats into labels automatically.</p>
-            </div>
             <div id="labelGenerationProgress" class="workflow-progress" style="display: none;">
               <div class="progress-bar">
                 <div class="progress-fill" id="labelProgressFill"></div>
               </div>
-              <p class="status-text" id="labelStatusText">Generating...</p>
+              <p class="status-text" id="labelStatusText">Preparing...</p>
+            </div>
+            <p class="workflow-hint">We’ll automatically group chats as soon as you save or skip.</p>
+          </div>
+        </section>
+
+        <!-- Suggested Labels (Workflow) -->
+        <section class="workflow-section">
+          <div class="workflow-card">
+            <div class="workflow-card-header">
+              <h3>Suggested Labels</h3>
+              <p>Review AI suggestions and add the ones that look right.</p>
+            </div>
+            <div class="workflow-suggestions-toolbar">
+              <span class="badge" id="suggestedBadge">0</span>
+              <button id="clearSuggestedBtn" class="btn btn-small" style="display: none; background: #ef4444; color: white;">
+                <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+                  <path d="M1 3.5h12M5.5 1h3M5.5 13h3M5.5 5.5v5M8.5 5.5v5" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Clear All
+              </button>
+            </div>
+            <div class="list-container" id="suggestedList">
+              <div class="empty-state">
+                <p>No suggestions yet. Save preferences or skip to auto-generate them.</p>
+              </div>
             </div>
           </div>
         </section>
