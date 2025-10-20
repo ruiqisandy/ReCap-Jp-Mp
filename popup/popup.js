@@ -64,6 +64,8 @@ const labelChatList = document.getElementById('labelChatList');
 const chatlistFilters = document.querySelectorAll('.chatlist-filters .filter-btn');
 const bulletpointsContent = document.getElementById('bulletpointsContent');
 const generateBulletPointsBtn = document.getElementById('generateBulletPointsBtn');
+const labelWorkflowScreen = document.getElementById('labelWorkflowScreen');
+const backToLibraryFromWorkflowBtn = document.getElementById('backToLibraryFromWorkflowBtn');
 
 // Summarization section
 const summarizationSection = document.getElementById('summarizationSection');
@@ -75,9 +77,20 @@ const summarizeStatusText = document.getElementById('summarizeStatusText');
 // Label generation section
 const labelGenerationSection = document.getElementById('labelGenerationSection');
 const generateLabelsBtn = document.getElementById('generateLabelsBtn');
+const labelGenerationTitle = document.getElementById('labelGenerationTitle');
+const labelGenerationSubtitle = document.getElementById('labelGenerationSubtitle');
 const labelGenerationProgress = document.getElementById('labelGenerationProgress');
 const labelProgressFill = document.getElementById('labelProgressFill');
 const labelStatusText = document.getElementById('labelStatusText');
+
+// Preferred labels section
+const preferredLabelsSection = document.getElementById('preferredLabelsSection');
+const preferredLabelsList = document.getElementById('preferredLabelsList');
+const addPreferredLabelBtn = document.getElementById('addPreferredLabelBtn');
+const savePreferredLabelsBtn = document.getElementById('savePreferredLabelsBtn');
+const continueWithoutPreferencesBtn = document.getElementById('continueWithoutPreferencesBtn');
+const preferredLabelsStatus = document.getElementById('preferredLabelsStatus');
+const toastEl = document.getElementById('toast');
 
 // Label lists
 const suggestedBadge = document.getElementById('suggestedBadge');
@@ -184,6 +197,9 @@ function showScreen(screenName) {
   progressScreen.style.display = 'none';
   libraryScreen.style.display = 'none';
   labelScreen.style.display = 'none';
+  if (labelWorkflowScreen) {
+    labelWorkflowScreen.style.display = 'none';
+  }
 
   // Show requested screen
   switch (screenName) {
@@ -195,6 +211,11 @@ function showScreen(screenName) {
       break;
     case 'library':
       libraryScreen.style.display = 'block';
+      break;
+    case 'workflow':
+      if (labelWorkflowScreen) {
+        labelWorkflowScreen.style.display = 'flex';
+      }
       break;
     case 'label':
       labelScreen.style.display = 'block';
@@ -226,12 +247,31 @@ function setupEventListeners() {
   backToWelcomeFromLibraryBtn.addEventListener('click', () => showScreen('welcome'));
   refreshBtn.addEventListener('click', loadLibrary);
   summarizeBtn.addEventListener('click', handleSummarizeChats);
-  generateLabelsBtn.addEventListener('click', handleGenerateLabels);
   clearSuggestedBtn.addEventListener('click', handleClearSuggestedLabels);
   createLabelBtn.addEventListener('click', handleCreateLabel);
   clearAcceptedBtn.addEventListener('click', handleClearAcceptedLabels);
   settingsBtn.addEventListener('click', handleSettings);
   clearDataBtn.addEventListener('click', handleClearData);
+
+  if (addPreferredLabelBtn) {
+    addPreferredLabelBtn.addEventListener('click', handleAddPreferredLabel);
+  }
+  if (savePreferredLabelsBtn) {
+    savePreferredLabelsBtn.addEventListener('click', handleSavePreferredLabels);
+  }
+  if (continueWithoutPreferencesBtn) {
+    continueWithoutPreferencesBtn.addEventListener('click', handleContinueWithoutPreferences);
+  }
+  if (preferredLabelsList) {
+    preferredLabelsList.addEventListener('input', handlePreferredLabelsListInput);
+    preferredLabelsList.addEventListener('click', handlePreferredLabelsListClick);
+  }
+  if (generateLabelsBtn) {
+    generateLabelsBtn.addEventListener('click', handleGenerateLabels);
+  }
+  if (backToLibraryFromWorkflowBtn) {
+    backToLibraryFromWorkflowBtn.addEventListener('click', handleWorkflowExit);
+  }
 
   // Label View Screen
   backToLibraryBtn.addEventListener('click', () => {
@@ -945,21 +985,29 @@ async function summarizeChats(onProgress) {
 }
 
 /**
- * Generate label suggestions from chat summaries
+ * Classify chats into preferred labels using AI
  * Runs in popup context (has access to AI Prompt API)
  *
+ * @param {Array<string>} preferredLabelNames - Preferred label names selected by the user
  * @param {Function} onProgress - Progress callback (current, total, message)
- * @returns {Promise<number>} Number of labels generated
+ * @returns {Promise<{labelCount: number, matchedChatCount: number}>} Classification stats
  */
-async function generateLabels(onProgress) {
-  console.log('[Popup] Starting label generation from chat summaries');
+async function generateLabelsForMode({ mode, preferredLabelNames = [], onProgress }) {
+  const isPreferredMode = mode === 'preferred' && Array.isArray(preferredLabelNames);
+  const hasPreferredLabels = isPreferredMode && preferredLabelNames.length > 0;
+  const stepsTotal = 3;
+
+  console.log(`[Popup] Starting label generation in ${mode === 'auto' ? 'auto' : 'preferred'} mode`);
 
   try {
-    if (onProgress) {
-      onProgress(0, 1, 'Loading chats with summaries...');
+    if (isPreferredMode && !hasPreferredLabels) {
+      throw new Error('No preferred labels provided for classification.');
     }
 
-    // Get all chats with summaries
+    if (onProgress) {
+      onProgress(0, stepsTotal, 'Loading chats with summaries...');
+    }
+
     const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
     if (!response.success) {
       throw new Error('Failed to get chats from storage');
@@ -971,31 +1019,83 @@ async function generateLabels(onProgress) {
     console.log(`[Popup] Found ${chatsWithSummaries.length} chats with summaries`);
 
     if (chatsWithSummaries.length === 0) {
-      console.warn('[Popup] No chats with summaries available for label generation');
       throw new Error('No chats with summaries found. Please run summarization first.');
     }
 
     if (onProgress) {
-      onProgress(0, 1, 'Generating labels from summaries...');
+      onProgress(
+        1,
+        stepsTotal,
+        isPreferredMode
+          ? 'Classifying chats into preferred labels...'
+          : 'Generating auto label suggestions...'
+      );
     }
 
-    // Generate labels using Prompt API (with batch processing)
-    const labels = await AIService.generateLabelsFromChatSummaries(chatsWithSummaries);
+    const labels = await AIService.generateLabelsFromChatSummaries(
+      chatsWithSummaries,
+      isPreferredMode ? preferredLabelNames : []
+    );
 
-    console.log('[Popup] Generated', labels.length, 'labels');
+    if (!Array.isArray(labels)) {
+      throw new Error('AI returned an unexpected response while generating labels.');
+    }
+
+    console.log(`[Popup] Label generation returned ${labels.length} labels`);
 
     if (onProgress) {
-      onProgress(1, 1, 'Saving label suggestions...');
+      onProgress(2, stepsTotal, 'Saving labels...');
     }
 
-    // Save labels via service worker
+    try {
+      await chrome.runtime.sendMessage({ type: 'clearSuggestedLabels' });
+      console.log('[Popup] Cleared previous suggested labels before saving new ones');
+    } catch (clearError) {
+      console.warn('[Popup] Unable to clear previous suggested labels:', clearError);
+    }
+
+    const indexToChatId = chatsWithSummaries.map(chat => chat.id);
+    const chatIdSet = new Set(indexToChatId);
+
+    let savedCount = 0;
+    let matchedChatCount = 0;
+    const timestamp = Date.now();
+
     for (const label of labels) {
+      if (!label || !label.name) {
+        continue;
+      }
+
+      const rawConversationIds = Array.isArray(label.conversationIds) ? label.conversationIds : [];
+      const normalizedConversationIds = rawConversationIds
+        .map(idOrIndex => {
+          const numericIndex = parseInt(idOrIndex, 10);
+          if (!isNaN(numericIndex) && numericIndex >= 1 && numericIndex <= indexToChatId.length) {
+            return indexToChatId[numericIndex - 1];
+          }
+          if (typeof idOrIndex === 'string' && chatIdSet.has(idOrIndex)) {
+            return idOrIndex;
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      const uniqueChatIds = [...new Set(normalizedConversationIds)];
+      const description = (label.description || '').trim() || `Chats related to ${label.name}`;
+      const confidence = typeof label.confidence === 'number'
+        ? label.confidence
+        : isPreferredMode
+          ? (uniqueChatIds.length > 0 ? 0.75 : 0)
+          : 0.7;
+
+      matchedChatCount += uniqueChatIds.length;
+
       const suggestedLabel = {
-        id: `suggested_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+        id: `${mode}_${timestamp}_${Math.random().toString(36).substring(2, 11)}`,
         name: label.name,
-        description: label.description,
-        confidence: label.confidence,
-        chatIds: label.conversationIds || [],
+        description,
+        confidence,
+        chatIds: uniqueChatIds,
         dismissed: false
       };
 
@@ -1003,15 +1103,89 @@ async function generateLabels(onProgress) {
         type: 'saveSuggestedLabel',
         data: suggestedLabel
       });
-      console.log('[Popup] Saved suggested label:', suggestedLabel.name);
+
+      console.log(
+        `[Popup] Saved ${mode === 'auto' ? 'auto' : 'preferred'} label: ${suggestedLabel.name} (${suggestedLabel.chatIds.length} chats)`
+      );
+
+      savedCount++;
     }
 
-    console.log('[Popup] Label generation complete');
-    return labels.length;
+    console.log(`[Popup] Label generation (${mode}) complete`);
 
+    return {
+      labelCount: savedCount,
+      matchedChatCount
+    };
   } catch (error) {
     console.error('[Popup] Error generating labels:', error);
     throw error;
+  }
+}
+
+/**
+ * Handle summarization button click
+ */
+async function runWorkflowClassification(mode) {
+  const isAutoMode = mode === 'auto';
+
+  setWorkflowBusy(true);
+
+  if (labelGenerationSection) {
+    labelGenerationSection.style.display = 'block';
+  }
+  if (labelGenerationProgress) {
+    labelGenerationProgress.style.display = 'flex';
+    if (labelProgressFill) {
+      labelProgressFill.style.width = '0%';
+    }
+  }
+  if (labelStatusText) {
+    labelStatusText.textContent = isAutoMode
+      ? 'Preparing auto label suggestions...'
+      : 'Initializing classification...';
+  }
+
+  try {
+    const { labelCount, matchedChatCount } = await generateLabelsForMode({
+      mode,
+      preferredLabelNames: savedPreferredLabelNames,
+      onProgress: (current, total, message) => {
+        if (labelProgressFill && total > 0) {
+          const progress = (current / total) * 100;
+          labelProgressFill.style.width = `${progress}%`;
+        }
+        if (labelStatusText) {
+          labelStatusText.textContent = message || (isAutoMode ? 'Generating labels...' : 'Classifying chats...');
+        }
+      }
+    });
+
+    const labelDescriptor = `${labelCount} ${isAutoMode ? 'suggested label' : 'preferred label'}${labelCount === 1 ? '' : 's'}`;
+    const chatText = matchedChatCount > 0
+      ? ` covering ${matchedChatCount} chat${matchedChatCount === 1 ? '' : 's'}`
+      : ' (no matching chats found yet)';
+
+    if (labelStatusText) {
+      labelStatusText.textContent = isAutoMode
+        ? `Generated ${labelDescriptor}${chatText}!`
+        : `Successfully classified ${labelDescriptor}${chatText}!`;
+    }
+
+    showToast('Successfully added!', 'success');
+    resetWorkflowProgress();
+    showScreen('library');
+    await loadLibrary();
+
+    return { labelCount, matchedChatCount };
+  } catch (error) {
+    console.error('[Popup] Label generation error:', error);
+    if (labelStatusText) {
+      labelStatusText.textContent = 'Error: ' + error.message;
+    }
+    throw error;
+  } finally {
+    setWorkflowBusy(false);
   }
 }
 
@@ -1066,33 +1240,63 @@ async function handleSummarizeChats() {
  * Handle label generation button click
  */
 async function handleGenerateLabels() {
-  console.log('[Popup] Starting label generation from library screen');
+  if (!generateLabelsBtn) {
+    console.warn('[Popup] Generate labels button not available; triggering workflow classification instead.');
+    await openLabelWorkflow();
+    return;
+  }
+
+  const isAutoMode = classificationMode === 'auto';
+  console.log(`[Popup] Starting label generation from library screen (mode: ${isAutoMode ? 'auto' : 'preferred'})`);
+
+  if (!isAutoMode && savedPreferredLabelNames.length === 0) {
+    updatePreferredLabelsStatus('Save at least one preferred label or choose "Continue Without Preferences" before continuing.', 'error');
+    return;
+  }
+
+  if (processedChatCount === 0) {
+    updatePreferredLabelsStatus('Summarize chats before generating labels.', 'error');
+    return;
+  }
 
   try {
     // Disable button and show progress
     generateLabelsBtn.disabled = true;
-    generateLabelsBtn.textContent = 'Generating...';
-    labelGenerationProgress.style.display = 'block';
+    generateLabelsBtn.dataset.state = 'busy';
+    generateLabelsBtn.textContent = isAutoMode ? 'Generating...' : 'Classifying...';
+    labelGenerationProgress.style.display = 'flex';
     labelProgressFill.style.width = '0%';
-    labelStatusText.textContent = 'Initializing label generation...';
+    labelStatusText.textContent = isAutoMode
+      ? 'Preparing auto label suggestions...'
+      : 'Initializing classification...';
 
-    // Run label generation
-    const count = await generateLabels((current, total, message) => {
-      // Update progress
-      const progress = (current / total) * 100;
-      labelProgressFill.style.width = `${progress}%`;
-      labelStatusText.textContent = message || `Generating labels...`;
+    const { labelCount, matchedChatCount } = await generateLabelsForMode({
+      mode: isAutoMode ? 'auto' : 'preferred',
+      preferredLabelNames: savedPreferredLabelNames,
+      onProgress: (current, total, message) => {
+        const progress = total > 0 ? (current / total) * 100 : 0;
+        labelProgressFill.style.width = `${progress}%`;
+        labelStatusText.textContent = message || (isAutoMode ? 'Generating labels...' : 'Classifying chats...');
+      }
     });
 
     // Success
     labelProgressFill.style.width = '100%';
-    labelStatusText.textContent = `Successfully generated ${count} label suggestions!`;
+    const labelDescriptor = `${labelCount} ${isAutoMode ? 'suggested label' : 'preferred label'}${labelCount === 1 ? '' : 's'}`;
+    const chatText = matchedChatCount > 0
+      ? ` covering ${matchedChatCount} chat${matchedChatCount === 1 ? '' : 's'}`
+      : ' (no matching chats found yet)';
+
+    labelStatusText.textContent = isAutoMode
+      ? `Generated ${labelDescriptor}${chatText}!`
+      : `Successfully classified ${labelDescriptor}${chatText}!`;
 
     // Wait a moment then hide progress and refresh library
     setTimeout(async () => {
       labelGenerationProgress.style.display = 'none';
       generateLabelsBtn.disabled = false;
-      generateLabelsBtn.textContent = 'Generate Labels';
+      generateLabelsBtn.dataset.state = 'idle';
+      updateLabelGenerationModeUI(processedChatCount);
       await loadLibrary();
     }, 2000);
 
@@ -1100,7 +1304,8 @@ async function handleGenerateLabels() {
     console.error('[Popup] Label generation error:', error);
     labelStatusText.textContent = 'Error: ' + error.message;
     generateLabelsBtn.disabled = false;
-    generateLabelsBtn.textContent = 'Generate Labels';
+    generateLabelsBtn.dataset.state = 'idle';
+    updateLabelGenerationModeUI(processedChatCount);
 
     // Show error for 5 seconds then hide
     setTimeout(() => {
@@ -1116,6 +1321,7 @@ async function loadLibrary() {
   try {
     // Load all chats first to check button visibility
     await loadAllChats();
+    await loadPreferredLabels();
 
     // Get chat processing state to determine which buttons to show
     const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
@@ -1126,25 +1332,24 @@ async function loadLibrary() {
 
       console.log(`[Popup] Chat state: ${unprocessedChats.length} unprocessed, ${processedChats.length} processed`);
 
-      // Show summarization section if there are unprocessed chats
-      if (unprocessedChats.length > 0) {
+      processedChatCount = processedChats.length;
+
+      if (summarizationSection) {
         summarizationSection.style.display = 'block';
-        // Update button text to show count
-        const baseText = 'Summarize Chats';
-        summarizeBtn.textContent = `${baseText} (${unprocessedChats.length})`;
-      } else {
-        summarizationSection.style.display = 'none';
       }
 
-      // Show label generation section if there are processed chats
-      if (processedChats.length > 0) {
-        labelGenerationSection.style.display = 'block';
-        // Update button text to show count
-        const baseText = 'Generate Labels';
-        generateLabelsBtn.textContent = `${baseText} (${processedChats.length} chats)`;
+      if (unprocessedChats.length > 0) {
+        summarizeBtn.disabled = false;
+        summarizeBtn.textContent = `Summarize Chats (${unprocessedChats.length})`;
       } else {
-        labelGenerationSection.style.display = 'none';
+        summarizeBtn.disabled = true;
+        summarizeBtn.textContent = 'Summaries Up To Date';
+        if (summarizationProgress) {
+          summarizationProgress.style.display = 'none';
+        }
       }
+    } else {
+      processedChatCount = 0;
     }
 
     // Load suggested labels
@@ -1164,6 +1369,31 @@ async function loadLibrary() {
 
   } catch (error) {
     console.error('[Popup] Error loading library:', error);
+  }
+}
+
+async function openLabelWorkflow() {
+  try {
+    resetWorkflowProgress();
+    setWorkflowBusy(false);
+    await loadPreferredLabels();
+    showScreen('workflow');
+  } catch (error) {
+    console.error('[Popup] Error opening label workflow:', error);
+    showToast('Unable to open organizer. Please try again.', 'error');
+    showScreen('library');
+  }
+}
+
+async function handleWorkflowExit() {
+  try {
+    resetWorkflowProgress();
+    setWorkflowBusy(false);
+    showScreen('library');
+    await loadLibrary();
+  } catch (error) {
+    console.error('[Popup] Error returning from workflow:', error);
+    showToast('Error returning to library.', 'error');
   }
 }
 
@@ -1372,6 +1602,494 @@ function toggleChatExpansion(chatId, button, context = 'library') {
     console.log('[Popup] After expand - computed maxHeight:', window.getComputedStyle(expansion).maxHeight);
     console.log('[Popup] After expand - computed opacity:', window.getComputedStyle(expansion).opacity);
   }
+}
+
+/**
+ * Escape HTML for safe attribute usage
+ * @param {string} text - Raw text
+ * @returns {string} Escaped text
+ */
+function escapeHtml(text = '') {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Update preferred labels status message
+ * @param {string} message - Message to display
+ * @param {'info'|'success'|'error'} variant - Status variant
+ * @param {boolean} persist - Whether to keep the message without auto-reset
+ */
+function updatePreferredLabelsStatus(message, variant = 'info', persist = false) {
+  if (!preferredLabelsStatus) {
+    return;
+  }
+
+  const colors = {
+    info: '#5b21b6',
+    success: '#15803d',
+    error: '#b91c1c'
+  };
+
+  preferredLabelsStatus.textContent = message;
+  preferredLabelsStatus.style.color = colors[variant] || colors.info;
+
+  if (preferredStatusTimeout) {
+    clearTimeout(preferredStatusTimeout);
+    preferredStatusTimeout = null;
+  }
+
+  if (!persist && variant !== 'info') {
+    preferredStatusTimeout = setTimeout(() => {
+      preferredLabelsStatus.textContent = PREFERRED_LABEL_STATUS_DEFAULT;
+      preferredLabelsStatus.style.color = colors.info;
+      preferredStatusTimeout = null;
+    }, 4000);
+  }
+}
+
+function setWorkflowBusy(isBusy) {
+  [savePreferredLabelsBtn, continueWithoutPreferencesBtn, addPreferredLabelBtn].forEach(btn => {
+    if (btn) {
+      btn.disabled = isBusy;
+    }
+  });
+  if (backToLibraryFromWorkflowBtn) {
+    backToLibraryFromWorkflowBtn.disabled = isBusy;
+  }
+}
+
+function resetWorkflowProgress() {
+  if (labelGenerationProgress) {
+    labelGenerationProgress.style.display = 'flex';
+  }
+  if (labelProgressFill) {
+    labelProgressFill.style.width = '0%';
+  }
+  if (labelStatusText) {
+    labelStatusText.textContent = 'Ready to categorize chats.';
+  }
+}
+
+function showToast(message, variant = 'info') {
+  if (!toastEl) {
+    return;
+  }
+
+  const backgrounds = {
+    success: 'rgba(16, 185, 129, 0.95)',
+    error: 'rgba(239, 68, 68, 0.95)',
+    info: 'rgba(37, 99, 235, 0.95)'
+  };
+
+  toastEl.style.background = backgrounds[variant] || backgrounds.info;
+  toastEl.textContent = message;
+  toastEl.classList.add('show');
+
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+  }
+
+  toastTimeout = setTimeout(() => {
+    toastEl.classList.remove('show');
+    toastTimeout = null;
+  }, 2500);
+}
+
+/**
+ * Get the friendly action name for label generation button
+ * @returns {string}
+ */
+function getLabelGenerationActionName() {
+  return classificationMode === 'auto'
+    ? 'Generate Suggested Labels'
+    : 'Classify Chats';
+}
+
+/**
+ * Update label generation button text when idle
+ * @param {number} processedCount - Number of processed chats
+ */
+function setGenerateLabelsIdleButtonText(processedCount = processedChatCount) {
+  if (!generateLabelsBtn || generateLabelsBtn.dataset.state === 'busy') {
+    return;
+  }
+
+  const baseText = getLabelGenerationActionName();
+  const countSuffix = processedCount > 0 ? ` (${processedCount} chats)` : '';
+  generateLabelsBtn.textContent = `${baseText}${countSuffix}`;
+}
+
+/**
+ * Update label generation section copy based on current mode
+ * @param {number} processedCount - Number of processed chats
+ */
+function updateLabelGenerationModeUI(processedCount = processedChatCount) {
+  const isAutoMode = classificationMode === 'auto';
+
+  if (labelGenerationTitle) {
+    labelGenerationTitle.textContent = isAutoMode
+      ? 'Step 3: Generate Suggested Labels'
+      : 'Step 3: Classify Preferred Labels';
+  }
+
+  if (labelGenerationSubtitle) {
+    labelGenerationSubtitle.textContent = isAutoMode
+      ? 'Analyze chat summaries and auto-group them into thematic categories.'
+      : 'Analyze chat summaries and categorize only into your preferred labels.';
+  }
+
+  setGenerateLabelsIdleButtonText(processedCount);
+}
+
+/**
+ * Focus a preferred label input by ID
+ * @param {string|null} labelId - Label ID to focus
+ */
+function focusPreferredLabelInput(labelId) {
+  if (!labelId || !preferredLabelsList) {
+    return;
+  }
+
+  const input = preferredLabelsList.querySelector(`.preferred-label-input[data-id="${labelId}"]`);
+  if (input) {
+    input.focus();
+    input.select();
+  }
+}
+
+/**
+ * Render preferred labels list
+ * @param {string|null} focusLabelId - Optional label ID to focus after render
+ */
+function renderPreferredLabels(focusLabelId = null) {
+  if (!preferredLabelsList) {
+    return;
+  }
+
+  if (!preferredLabels.length) {
+    preferredLabelsList.innerHTML = `
+      <div class="preferred-labels-empty">
+        <p>Add the topics you care about to get tailored label suggestions.</p>
+      </div>
+    `;
+    return;
+  }
+
+  preferredLabelsList.innerHTML = preferredLabels.map((label, index) => `
+    <div class="preferred-label-item" data-id="${label.id}">
+      <span class="preferred-label-index">${index + 1}</span>
+      <input
+        type="text"
+        class="preferred-label-input"
+        data-id="${label.id}"
+        value="${escapeHtml(label.name)}"
+        placeholder="e.g., Probability"
+        maxlength="40"
+      />
+      <button class="preferred-label-remove" type="button" data-id="${label.id}" title="Remove label">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+          <path d="M4 4l6 6M10 4l-6 6" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  `).join('');
+
+  focusPreferredLabelInput(focusLabelId);
+}
+
+/**
+ * Add a preferred label entry
+ * @param {string} initialValue - Optional initial value
+ * @param {Object} options - Additional options
+ * @param {boolean} [options.silent=false] - Skip status message update
+ * @param {boolean} [options.focus=true] - Focus the new input after render
+ */
+function addPreferredLabel(initialValue = '', { silent = false, focus = true } = {}) {
+  if (!preferredLabelsList) {
+    return;
+  }
+
+  if (preferredLabels.length >= MAX_PREFERRED_LABELS) {
+    updatePreferredLabelsStatus(`You can add up to ${MAX_PREFERRED_LABELS} preferred labels.`, 'error');
+    return;
+  }
+
+  const label = {
+    id: `pref_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name: initialValue || ''
+  };
+
+  preferredLabels.push(label);
+  renderPreferredLabels(focus ? label.id : null);
+
+  if (!silent) {
+    updatePreferredLabelsStatus('Save to apply these preferences.', 'info', true);
+  }
+}
+
+/**
+ * Remove a preferred label entry
+ * @param {string} labelId - Label ID to remove
+ * @param {Object} options - Additional options
+ * @param {boolean} [options.silent=false] - Skip status message update
+ */
+function removePreferredLabel(labelId, { silent = false } = {}) {
+  const index = preferredLabels.findIndex(label => label.id === labelId);
+  if (index === -1) {
+    return;
+  }
+
+  preferredLabels.splice(index, 1);
+  renderPreferredLabels();
+
+  if (!preferredLabels.length) {
+    addPreferredLabel('', { silent: true, focus: true });
+  }
+
+  if (!silent) {
+    updatePreferredLabelsStatus('Save to apply these preferences.', 'info', true);
+  }
+}
+
+/**
+ * Collect preferred labels from inputs (trimmed and deduplicated)
+ * @returns {Array<{id: string, name: string}>} Preferred labels
+ */
+function collectPreferredLabelsFromInputs() {
+  if (!preferredLabelsList) {
+    return [];
+  }
+
+  const inputs = preferredLabelsList.querySelectorAll('.preferred-label-input');
+  const seen = new Set();
+  const collected = [];
+
+  inputs.forEach(input => {
+    const id = input.getAttribute('data-id');
+    const rawValue = (input.value || '').trim();
+
+    // Update in-memory representation with current value (even if empty)
+    const storedLabel = preferredLabels.find(label => label.id === id);
+    if (storedLabel) {
+      storedLabel.name = input.value || '';
+    }
+
+    if (!rawValue) {
+      return;
+    }
+
+    const normalized = rawValue.toLowerCase();
+    if (seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+
+    collected.push({
+      id,
+      name: rawValue
+    });
+  });
+
+  return collected;
+}
+
+/**
+ * Handle preferred label add button
+ */
+function handleAddPreferredLabel() {
+  addPreferredLabel();
+}
+
+/**
+ * Handle input changes in preferred labels list
+ * @param {InputEvent} event - Input event
+ */
+function handlePreferredLabelsListInput(event) {
+  if (!event.target.classList.contains('preferred-label-input')) {
+    return;
+  }
+
+  const labelId = event.target.getAttribute('data-id');
+  const label = preferredLabels.find(item => item.id === labelId);
+  if (label) {
+    label.name = event.target.value;
+  }
+
+  updatePreferredLabelsStatus('Save to apply these preferences.', 'info', true);
+}
+
+/**
+ * Handle click events within preferred labels list
+ * @param {MouseEvent} event - Click event
+ */
+function handlePreferredLabelsListClick(event) {
+  const removeBtn = event.target.closest('.preferred-label-remove');
+  if (removeBtn) {
+    const labelId = removeBtn.getAttribute('data-id');
+    removePreferredLabel(labelId);
+  }
+}
+
+/**
+ * Save preferred labels to storage
+ */
+async function handleSavePreferredLabels() {
+  try {
+    const collected = collectPreferredLabelsFromInputs();
+
+    if (collected.length === 0) {
+      updatePreferredLabelsStatus('Add at least one preferred label before saving.', 'error');
+      return;
+    }
+
+    setWorkflowBusy(true);
+
+    preferredLabels = collected.map(item => ({
+      id: item.id,
+      name: item.name
+    }));
+
+    const labelsToSave = preferredLabels.map(item => item.name);
+
+    const response = await chrome.runtime.sendMessage({
+      type: 'savePreferredLabels',
+      data: { labels: labelsToSave }
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Unable to save preferred labels');
+    }
+
+    savedPreferredLabelNames = labelsToSave;
+    classificationMode = 'preferred';
+    updatePreferredLabelsStatus('Preferences saved! Categorizing chats now...', 'success', true);
+    renderPreferredLabels();
+    updateLabelGenerationModeUI(processedChatCount);
+
+    await runWorkflowClassification('preferred');
+  } catch (error) {
+    console.error('[Popup] Error saving preferred labels:', error);
+    updatePreferredLabelsStatus('Unable to categorize chats. ' + error.message, 'error');
+    setWorkflowBusy(false);
+  }
+}
+
+/**
+ * Continue to next step without saving preferred labels
+ */
+async function handleContinueWithoutPreferences() {
+  try {
+    setWorkflowBusy(true);
+
+    const response = await chrome.runtime.sendMessage({
+      type: 'savePreferredLabels',
+      data: { labels: [] }
+    });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Unable to update preferences');
+    }
+
+    classificationMode = 'auto';
+    savedPreferredLabelNames = [];
+    preferredLabels = [];
+    renderPreferredLabels();
+    addPreferredLabel('', { silent: true, focus: false });
+
+    updatePreferredLabelsStatus('Continuing without preferences. We\'ll auto-generate labels in the next step.', 'info', true);
+    updateLabelGenerationModeUI(processedChatCount);
+
+    await runWorkflowClassification('auto');
+  } catch (error) {
+    console.error('[Popup] Error continuing without preferences:', error);
+    updatePreferredLabelsStatus('Unable to categorize chats. ' + error.message, 'error');
+    setWorkflowBusy(false);
+  }
+}
+
+/**
+ * Load preferred labels from storage
+ */
+async function loadPreferredLabels() {
+  if (!preferredLabelsList) {
+    return;
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'getPreferredLabels' });
+
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to load preferred labels');
+    }
+
+    const labels = Array.isArray(response.data)
+      ? response.data.map(label => (label || '').trim()).filter(label => label.length > 0)
+      : [];
+
+    savedPreferredLabelNames = labels;
+    preferredLabels = labels.map(label => ({
+      id: `saved_${Math.random().toString(36).slice(2, 10)}`,
+      name: label
+    }));
+
+    classificationMode = labels.length > 0 ? 'preferred' : 'auto';
+
+    if (!preferredLabels.length) {
+      preferredLabels = [];
+      renderPreferredLabels();
+      addPreferredLabel('', { silent: true, focus: false });
+      updatePreferredLabelsStatus(PREFERRED_LABEL_STATUS_DEFAULT, 'info', true);
+    } else {
+      renderPreferredLabels();
+      updatePreferredLabelsStatus(
+        `${preferredLabels.length} preferred label${preferredLabels.length === 1 ? '' : 's'} saved.`,
+        'info',
+        true
+      );
+    }
+
+    updateLabelGenerationModeUI(processedChatCount);
+    updateClassificationAvailability(processedChatCount);
+  } catch (error) {
+    console.error('[Popup] Error loading preferred labels:', error);
+    preferredLabels = [];
+    renderPreferredLabels();
+    addPreferredLabel('', { silent: true, focus: false });
+    updatePreferredLabelsStatus('Error loading preferred labels. Try again.', 'error');
+    updateLabelGenerationModeUI(processedChatCount);
+    updateClassificationAvailability(processedChatCount);
+  }
+}
+
+/**
+ * Update classification availability based on processed chats and preferences
+ * @param {number} processedCount - Number of processed chats
+ */
+function updateClassificationAvailability(processedCount) {
+  if (!generateLabelsBtn) {
+    return;
+  }
+
+  const hasPreferences = savedPreferredLabelNames.length > 0;
+  const isAutoMode = classificationMode === 'auto';
+  const canClassify = processedCount > 0 && (hasPreferences || isAutoMode);
+
+  generateLabelsBtn.disabled = !canClassify;
+
+  if (processedCount === 0) {
+    generateLabelsBtn.title = 'Summarize chats before generating labels.';
+  } else if (!hasPreferences && !isAutoMode) {
+    generateLabelsBtn.title = 'Save preferred labels or skip to auto-categorize.';
+  } else {
+    generateLabelsBtn.removeAttribute('title');
+  }
+
+  setGenerateLabelsIdleButtonText(processedCount);
 }
 
 /**
@@ -1663,6 +2381,16 @@ let currentLabelChats = [];
 // Track expanded chat states
 let expandedLibraryChats = new Set();
 let expandedLabelChats = new Set();
+
+// Preferred labels state
+const MAX_PREFERRED_LABELS = 6;
+const PREFERRED_LABEL_STATUS_DEFAULT = 'Add up to six labels or skip to auto-categorize.';
+let preferredLabels = [];
+let savedPreferredLabelNames = [];
+let preferredStatusTimeout = null;
+let processedChatCount = 0;
+let classificationMode = 'preferred';
+let toastTimeout = null;
 
 /**
  * Load label view screen
@@ -2011,8 +2739,8 @@ function attachBulletPointsClickHandlers() {
 /**
  * Handle create label
  */
-function handleCreateLabel() {
-  alert('Create new label functionality coming in Module 4!');
+async function handleCreateLabel() {
+  await openLabelWorkflow();
 }
 
 /**

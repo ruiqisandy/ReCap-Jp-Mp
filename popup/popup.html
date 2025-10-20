@@ -133,59 +133,26 @@
       </header>
 
       <main class="library-main">
-        <!-- Step 1: Summarization Section -->
-        <section class="library-section" id="summarizationSection" style="display: none;">
-          <div class="ai-processing-card">
-            <div class="ai-processing-header">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color: #10a37f;">
-                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                <path d="M9 12h6M9 16h6" stroke-width="2" stroke-linecap="round"/>
-              </svg>
-              <div>
-                <h3>Step 1: Summarize Conversations</h3>
-                <p>Process message pairs and generate chat summaries (slow, one-time process)</p>
-              </div>
+        <!-- Summarize Chats CTA -->
+        <section class="library-mini-section" id="summarizationSection" style="display: none;">
+          <div class="mini-card">
+            <div class="mini-card-info">
+              <h3>Summarize Conversations</h3>
+              <p>Generate chat summaries so labels stay accurate.</p>
             </div>
-            <button id="summarizeBtn" class="btn btn-primary">
-              <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <button id="summarizeBtn" class="btn btn-primary btn-small">
+              <svg class="btn-icon" width="18" height="18" viewBox="0 0 20 20" fill="none">
                 <circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="2"/>
                 <path d="M10 6V10L13 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
               </svg>
               Summarize Chats
             </button>
-            <div id="summarizationProgress" style="display: none;">
-              <div class="progress-bar" style="margin-top: 12px;">
-                <div class="progress-fill" id="summarizeProgressFill"></div>
-              </div>
-              <p class="status-text" id="summarizeStatusText" style="margin-top: 8px; font-size: 13px;">Processing...</p>
-            </div>
           </div>
-        </section>
-
-        <!-- Step 2: Label Generation Section -->
-        <section class="library-section" id="labelGenerationSection" style="display: none;">
-          <div class="ai-processing-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-color: #fbbf24;">
-            <div class="ai-processing-header">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color: #d97706;">
-                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <div>
-                <h3 style="color: #92400e;">Step 2: Generate Label Suggestions</h3>
-                <p style="color: #b45309;">Analyze chat summaries to suggest organizational labels (fast, can be re-run)</p>
-              </div>
+          <div id="summarizationProgress" class="mini-progress" style="display: none;">
+            <div class="progress-bar">
+              <div class="progress-fill" id="summarizeProgressFill"></div>
             </div>
-            <button id="generateLabelsBtn" class="btn btn-primary">
-              <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              Generate Labels
-            </button>
-            <div id="labelGenerationProgress" style="display: none;">
-              <div class="progress-bar" style="margin-top: 12px;">
-                <div class="progress-fill" id="labelProgressFill"></div>
-              </div>
-              <p class="status-text" id="labelStatusText" style="margin-top: 8px; font-size: 13px;">Generating...</p>
-            </div>
+            <p class="status-text" id="summarizeStatusText">Processing...</p>
           </div>
         </section>
         <!-- Suggested Labels Section -->
@@ -274,7 +241,79 @@
       </footer>
     </div>
 
-    <!-- SCREEN 4: LABEL VIEW SCREEN -->
+    <!-- SCREEN 4: LABEL WORKFLOW -->
+    <div id="labelWorkflowScreen" class="screen" style="display: none;">
+      <header class="workflow-header">
+        <button id="backToLibraryFromWorkflowBtn" class="btn-icon-only" title="Back to Library">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+            <path d="M12.5 15L7.5 10L12.5 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="workflow-titles">
+          <h1>Organize Your Chats</h1>
+          <p>Pick preferred labels or let the AI suggest new categories.</p>
+        </div>
+      </header>
+
+      <main class="workflow-main">
+        <!-- Preferred Labels Section -->
+        <section class="workflow-section" id="preferredLabelsSection">
+          <div class="workflow-card">
+            <div class="workflow-card-header">
+              <h3>Step 1: Choose Preferred Labels</h3>
+              <p>Save the topics you care about most. We’ll only sort chats into these labels.</p>
+            </div>
+            <div class="preferred-labels-wrapper">
+              <div class="preferred-labels-controls header">
+                <button id="addPreferredLabelBtn" class="btn btn-small" type="button">
+                  <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+                    <path d="M7 2v10M2 7h10" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  Add Preferred Label
+                </button>
+              </div>
+              <div class="preferred-labels-list" id="preferredLabelsList">
+                <div class="preferred-labels-empty">
+                  <p>Add the topics you care about to get tailored label suggestions.</p>
+                </div>
+              </div>
+            </div>
+            <div class="preferred-labels-footer compact">
+              <span id="preferredLabelsStatus" class="preferred-labels-status">Add up to six labels or skip to auto-categorize.</span>
+              <div class="preferred-labels-actions">
+                <button id="savePreferredLabelsBtn" class="btn btn-primary" type="button">
+                  <svg class="btn-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor">
+                    <path d="M15 5l-7.5 7L3 7.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  Save &amp; Classify
+                </button>
+                <button id="continueWithoutPreferencesBtn" class="btn btn-secondary" type="button">
+                  Continue Without Preferences
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Classification Status Section -->
+        <section class="workflow-section" id="labelGenerationSection">
+          <div class="workflow-card highlight">
+            <div class="workflow-card-header">
+              <h3 id="labelGenerationTitle">Step 2: Categorize Chats</h3>
+              <p id="labelGenerationSubtitle">We’ll analyze your summaries and organize chats into labels automatically.</p>
+            </div>
+            <div id="labelGenerationProgress" class="workflow-progress" style="display: none;">
+              <div class="progress-bar">
+                <div class="progress-fill" id="labelProgressFill"></div>
+              </div>
+              <p class="status-text" id="labelStatusText">Generating...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- SCREEN 5: LABEL VIEW SCREEN -->
     <div id="labelScreen" class="screen" style="display: none;">
       <header class="label-header">
         <button id="backToLibraryBtn" class="btn-icon-only">
@@ -391,6 +430,8 @@
     </div>
 
   </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script src="../lib/storage.js"></script>
   <script src="../lib/ai-service.js"></script>
