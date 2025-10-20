@@ -94,6 +94,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true, data: labels });
           break;
 
+        case 'getPreferredLabels':
+          const preferredLabels = await StorageService.getPreferredLabels();
+          sendResponse({ success: true, data: preferredLabels });
+          break;
+
+        case 'savePreferredLabels':
+          await StorageService.savePreferredLabels(message.data?.labels || []);
+          sendResponse({ success: true });
+          break;
+
         case 'getAllSuggestedLabels':
           const suggestedLabels = await StorageService.getAllSuggestedLabels();
           sendResponse({ success: true, data: suggestedLabels });
@@ -314,37 +324,45 @@ async function handleProcessChatsForLabels() {
 
     console.log(`[Background] Successfully processed ${processedCount}/${chats.length} chats`);
 
-    // STEP 5: Generate labels from all chat summaries
+    // STEP 5: Generate labels from all chat summaries (when preferences exist)
     if (processedCount > 0) {
-      console.log('[Background] Generating labels from chat summaries...');
+      console.log('[Background] Generating labels from chat summaries (preferred labels flow)...');
 
       try {
-        // Get updated chats with summaries
-        const updatedChatsObj = await StorageService.getAllChats();
-        const updatedChats = Object.values(updatedChatsObj);
+        const preferredLabels = await StorageService.getPreferredLabels();
 
-        // Generate labels using Prompt API
-        const labels = await AIService.generateLabelsFromChatSummaries(updatedChats);
+        if (!preferredLabels || preferredLabels.length === 0) {
+          console.log('[Background] No preferred labels saved; skipping classification step.');
+        } else {
+          // Get updated chats with summaries
+          const updatedChatsObj = await StorageService.getAllChats();
+          const updatedChats = Object.values(updatedChatsObj);
 
-        console.log('[Background] Generated', labels.length, 'labels');
+          // Generate labels using Prompt API with preferred labels
+          const labels = await AIService.generateLabelsFromChatSummaries(updatedChats, preferredLabels);
 
-        // Save as suggested labels
-        for (const label of labels) {
-          const suggestedLabel = {
-            id: `suggested_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            name: label.name,
-            description: label.description,
-            confidence: label.confidence,
-            chatIds: label.conversationIds || [],
-            dismissed: false
-          };
+          console.log('[Background] Generated', labels.length, 'preferred label groups');
 
-          await StorageService.saveSuggestedLabel(suggestedLabel);
-          console.log('[Background] Saved suggested label:', suggestedLabel.name);
+          await handleClearSuggestedLabels();
+
+          // Save as suggested labels
+          for (const label of labels) {
+            const suggestedLabel = {
+              id: `suggested_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              name: label.name,
+              description: label.description,
+              confidence: label.confidence,
+              chatIds: label.conversationIds || [],
+              dismissed: false
+            };
+
+            await StorageService.saveSuggestedLabel(suggestedLabel);
+            console.log('[Background] Saved preferred label suggestion:', suggestedLabel.name);
+          }
         }
 
       } catch (error) {
-        console.error('[Background] Error generating labels from summaries:', error);
+        console.error('[Background] Error generating preferred label suggestions from summaries:', error);
         // Don't throw - summaries were saved successfully, labels can be regenerated later
       }
     }
