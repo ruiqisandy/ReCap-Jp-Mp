@@ -897,6 +897,20 @@ async function summarizeChats(onProgress) {
         // Skip if no messages
         if (!chat.messages || chat.messages.length === 0) {
           console.log(`[Popup] Skipping chat ${chat.id} - no messages`);
+          await chrome.runtime.sendMessage({
+            type: 'updateChat',
+            data: {
+              chatId: chat.id,
+              updates: {
+                messagePairSummaries: [],
+                chatSummary: chat.title || 'Summary unavailable',
+                processed: true,
+                summarizationFailed: true,
+                excludeFromLibrary: true
+              }
+            }
+          });
+          processedCount++;
           continue;
         }
 
@@ -928,7 +942,8 @@ async function summarizeChats(onProgress) {
                 messagePairSummaries: [],
                 chatSummary: chat.title || 'Summary unavailable',
                 processed: true,
-                summarizationFailed: true
+                summarizationFailed: true,
+                excludeFromLibrary: true
               }
             }
           });
@@ -973,7 +988,9 @@ async function summarizeChats(onProgress) {
             updates: {
               messagePairSummaries: pairSummaries,
               chatSummary: chatSummary,
-              processed: true
+              processed: true,
+              summarizationFailed: false,
+              excludeFromLibrary: false
             }
           }
         });
@@ -1359,8 +1376,9 @@ async function loadLibrary() {
     const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
     if (response.success) {
       const chats = Object.values(response.data);
-      const unprocessedChats = chats.filter(chat => !chat.processed || !chat.chatSummary);
-      const processedChats = chats.filter(chat => chat.processed && chat.chatSummary);
+      const visibleChats = chats.filter(chat => !chat.excludeFromLibrary);
+      const unprocessedChats = visibleChats.filter(chat => !chat.processed || !chat.chatSummary);
+      const processedChats = visibleChats.filter(chat => chat.processed && chat.chatSummary);
 
       console.log(`[Popup] Chat state: ${unprocessedChats.length} unprocessed, ${processedChats.length} processed`);
 
@@ -1442,14 +1460,17 @@ async function loadAllChats() {
       // Sort by date (newest first)
       chats.sort((a, b) => b.date - a.date);
 
+      // Filter out chats we can't summarize or display
+      const visibleChats = chats.filter(chat => !chat.excludeFromLibrary);
+
       // Update badge
-      allChatsBadge.textContent = chats.length;
+      allChatsBadge.textContent = visibleChats.length;
 
       // Store chats globally for filtering
-      window.allChats = chats;
+      window.allChats = visibleChats;
 
       // Render all chats initially
-      renderChatList(chats);
+      renderChatList(visibleChats);
     }
   } catch (error) {
     console.error('[Popup] Error loading chats:', error);
@@ -1476,6 +1497,9 @@ function renderChatList(chats) {
 
     const chatSummary = chat.chatSummary || 'No summary available';
     const hasPairSummaries = chat.messagePairSummaries && chat.messagePairSummaries.length > 0;
+    const pairCount = hasPairSummaries
+      ? chat.messagePairSummaries.length
+      : Math.floor(messageCount / 2);
 
     return `
       <div class="chat-item" data-id="${chat.id}" data-platform="${chat.platform}">
@@ -1491,7 +1515,7 @@ function renderChatList(chats) {
         </div>
         <div class="chat-item-summary-headline">${chatSummary}</div>
         <div class="chat-item-meta">
-          <span class="chat-item-messages">${messageCount} messages</span>
+          <span class="chat-item-messages">${pairCount} Q&As</span>
           <span class="chat-item-date">${date}</span>
           ${hasPairSummaries ? `
             <button class="chat-item-expand-btn" data-chat-id="${chat.id}" title="Show message pair summaries">
@@ -1584,8 +1608,22 @@ function filterChats(platform) {
 function toggleChatExpansion(chatId, button, context = 'library') {
   console.log(`[Popup] toggleChatExpansion called: chatId=${chatId}, context=${context}`);
 
-  // Find the expansion container
-  const expansion = document.querySelector(`.chat-item-expansion[data-chat-id="${chatId}"]`);
+  // Determine container scope based on context
+  const container = context === 'label' ? labelChatList : chatList;
+
+  let expansion = null;
+
+  if (container) {
+    expansion = container.querySelector(`.chat-item-expansion[data-chat-id="${chatId}"]`);
+  }
+
+  // Fallback: scope to nearest chat item just in case markup differs
+  if (!expansion && button) {
+    const parentItem = button.closest('.chat-item');
+    if (parentItem) {
+      expansion = parentItem.querySelector('.chat-item-expansion');
+    }
+  }
 
   if (!expansion) {
     console.warn('[Popup] No expansion element found for chat:', chatId);
@@ -2443,19 +2481,22 @@ async function loadLabelView(labelId) {
 
     // Update header
     labelViewName.textContent = label.name;
-    labelViewChatCount.textContent = `${label.chatIds.length} chat${label.chatIds.length !== 1 ? 's' : ''}`;
 
     // Load chats
     currentLabelChats = [];
     for (const chatId of label.chatIds) {
       const chat = await StorageService.getChat(chatId);
-      if (chat) {
+      if (chat && !chat.excludeFromLibrary) {
         currentLabelChats.push(chat);
+      } else if (chat && chat.excludeFromLibrary) {
+        console.log(`[Popup] Skipping chat ${chat.id} in label view - excluded from library`);
       }
     }
 
     // Sort by date (newest first)
     currentLabelChats.sort((a, b) => b.date - a.date);
+
+    labelViewChatCount.textContent = `${currentLabelChats.length} chat${currentLabelChats.length !== 1 ? 's' : ''}`;
 
     // Load summary if exists
     if (label.summary) {
@@ -2505,7 +2546,6 @@ function switchTab(tabName) {
     summary: document.getElementById('summaryTab'),
     chatlist: document.getElementById('chatlistTab'),
     mindmap: document.getElementById('mindmapTab'),
-    quiz: document.getElementById('quizTab'),
     bulletpoints: document.getElementById('bulletpointsTab')
   };
 
@@ -2539,9 +2579,12 @@ function renderLabelChatList(chats) {
 
     const chatSummary = chat.chatSummary || 'No summary available';
     const hasPairSummaries = chat.messagePairSummaries && chat.messagePairSummaries.length > 0;
+    const pairCount = hasPairSummaries
+      ? chat.messagePairSummaries.length
+      : Math.floor(messageCount / 2);
 
     // Debug logging
-    console.log(`[Popup] Rendering chat ${chat.id}: hasPairSummaries=${hasPairSummaries}, pairCount=${chat.messagePairSummaries?.length || 0}`);
+    console.log(`[Popup] Rendering chat ${chat.id}: hasPairSummaries=${hasPairSummaries}, pairCount=${pairCount}`);
 
     return `
       <div class="chat-item" data-id="${chat.id}" data-platform="${chat.platform}">
@@ -2557,7 +2600,7 @@ function renderLabelChatList(chats) {
         </div>
         <div class="chat-item-summary-headline">${chatSummary}</div>
         <div class="chat-item-meta">
-          <span class="chat-item-messages">${messageCount} messages</span>
+          <span class="chat-item-messages">${pairCount} Q&As</span>
           <span class="chat-item-date">${date}</span>
           ${hasPairSummaries ? `
             <button class="chat-item-expand-btn" data-chat-id="${chat.id}" title="Show message pair summaries">
