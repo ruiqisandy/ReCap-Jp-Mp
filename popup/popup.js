@@ -1506,12 +1506,20 @@ function renderChatList(chats) {
         <div class="chat-item-header">
           <span class="chat-platform-badge ${chat.platform}">${PLATFORMS[chat.platform].name}</span>
           <span class="chat-item-title">${chat.title}</span>
-          <button class="chat-item-link-btn" data-url="${chat.url}" title="Open original chat">
-            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
-              <path d="M9 6.5V9.5C9 9.77614 8.77614 10 8.5 10H2.5C2.22386 10 2 9.77614 2 9.5V3.5C2 3.22386 2.22386 3 2.5 3H5.5" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M7 2H10M10 2V5M10 2L6 6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
+          <div class="chat-item-actions">
+            <button class="chat-item-delete-btn" data-chat-id="${chat.id}" title="Delete chat">
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                <path d="M3 3.5h6M4 3.5V2.5C4 2.22386 4.22386 2 4.5 2h3C7.77614 2 8 2.22386 8 2.5v1M9 3.5v6c0 .5523-.4477 1-1 1H4c-.55228 0-1-.4477-1-1v-6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M5 5.5v3M7 5.5v3" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button class="chat-item-link-btn" data-url="${chat.url}" title="Open original chat">
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                <path d="M9 6.5V9.5C9 9.77614 8.77614 10 8.5 10H2.5C2.22386 10 2 9.77614 2 9.5V3.5C2 3.22386 2.22386 3 2.5 3H5.5" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M7 2H10M10 2V5M10 2L6 6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="chat-item-summary-headline">${chatSummary}</div>
         <div class="chat-item-meta">
@@ -1552,6 +1560,16 @@ function renderChatList(chats) {
       if (url) {
         chrome.tabs.create({ url, active: true });
       }
+    });
+  });
+
+  // Add event listeners for delete buttons
+  const deleteButtons = chatList.querySelectorAll('.chat-item-delete-btn');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const chatId = btn.getAttribute('data-chat-id');
+      await handleDeleteChat(chatId, 'library');
     });
   });
 
@@ -1668,9 +1686,110 @@ function toggleChatExpansion(chatId, button, context = 'library') {
     }
     expandedSet.add(chatId);
     console.log('[Popup] Expanded chat:', chatId);
-    console.log('[Popup] After adding expanded class:', expansion.className);
-    console.log('[Popup] After expand - computed maxHeight:', window.getComputedStyle(expansion).maxHeight);
-    console.log('[Popup] After expand - computed opacity:', window.getComputedStyle(expansion).opacity);
+  console.log('[Popup] After adding expanded class:', expansion.className);
+  console.log('[Popup] After expand - computed maxHeight:', window.getComputedStyle(expansion).maxHeight);
+  console.log('[Popup] After expand - computed opacity:', window.getComputedStyle(expansion).opacity);
+  }
+}
+
+/**
+ * Delete a chat from storage and update UI
+ * @param {string} chatId - Chat ID to delete
+ * @param {'library'|'label'} context - Current view context
+ */
+async function handleDeleteChat(chatId, context = 'library') {
+  const confirmed = confirm('Delete this chat?\n\nIt will be removed from All Conversations and any labels.');
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({ type: 'deleteChat', data: { chatId } });
+
+    expandedLibraryChats.delete(chatId);
+    expandedLabelChats.delete(chatId);
+
+    showToast('Chat deleted.', 'success');
+
+    if (context === 'label') {
+      currentLabelChats = currentLabelChats.filter(chat => chat.id !== chatId);
+      if (labelViewChatCount) {
+        labelViewChatCount.textContent = `${currentLabelChats.length} chat${currentLabelChats.length === 1 ? '' : 's'}`;
+      }
+      renderLabelChatList(currentLabelChats);
+    }
+
+    await loadLibrary();
+  } catch (error) {
+    console.error('[Popup] Error deleting chat:', error);
+    showToast('Error deleting chat. Please try again.', 'error');
+  }
+}
+
+/**
+ * Remove a chat from the current label without deleting the chat
+ * @param {string} chatId - Chat ID to remove
+ */
+async function handleRemoveChatFromLabel(chatId) {
+  if (!currentLabelId) {
+    return;
+  }
+
+  const confirmed = confirm('Remove this chat from this label?\n\nThe chat will stay in All Conversations and other labels.');
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({
+      type: 'removeChatFromLabel',
+      data: { labelId: currentLabelId, chatId }
+    });
+
+    currentLabelChats = currentLabelChats.filter(chat => chat.id !== chatId);
+    expandedLabelChats.delete(chatId);
+
+    if (labelViewChatCount) {
+      labelViewChatCount.textContent = `${currentLabelChats.length} chat${currentLabelChats.length === 1 ? '' : 's'}`;
+    }
+
+    renderLabelChatList(currentLabelChats);
+    showToast('Removed from label.', 'success');
+    await loadLibrary();
+  } catch (error) {
+    console.error('[Popup] Error removing chat from label:', error);
+    showToast('Error removing chat from label. Please try again.', 'error');
+  }
+}
+
+/**
+ * Delete a label and update associated UI
+ * @param {string} labelId - Label ID to delete
+ */
+async function handleDeleteLabel(labelId) {
+  const confirmed = confirm('Delete this label?\n\nChats will remain in your library and other labels.');
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await chrome.runtime.sendMessage({ type: 'deleteLabel', data: { labelId } });
+
+    if (currentLabelId === labelId) {
+      currentLabelId = null;
+      showScreen('library');
+    }
+
+    expandedLabelChats.clear();
+
+    showToast('Label deleted.', 'success');
+    await loadLibrary();
+  } catch (error) {
+    console.error('[Popup] Error deleting label:', error);
+    showToast('Error deleting label. Please try again.', 'error');
   }
 }
 
@@ -2163,6 +2282,24 @@ function updateClassificationAvailability(processedCount) {
 }
 
 /**
+ * Count chats in a label that are still visible in the library
+ * @param {Array<string>} chatIds
+ * @returns {number}
+ */
+function calculateVisibleChatCount(chatIds = []) {
+  if (!Array.isArray(chatIds) || chatIds.length === 0) {
+    return 0;
+  }
+
+  if (!Array.isArray(window.allChats) || window.allChats.length === 0) {
+    return chatIds.length;
+  }
+
+  const visibleSet = new Set(window.allChats.map(chat => chat.id));
+  return chatIds.reduce((count, chatId) => count + (visibleSet.has(chatId) ? 1 : 0), 0);
+}
+
+/**
  * Render suggested labels
  */
 function renderSuggestedLabels(labels) {
@@ -2177,19 +2314,22 @@ function renderSuggestedLabels(labels) {
   // Show clear button when there are suggested labels
   clearSuggestedBtn.style.display = 'inline-flex';
 
-  suggestedList.innerHTML = labels.map(label => `
-    <div class="label-item suggested" data-id="${label.id}">
-      <div class="label-content">
-        <h3>${label.name}</h3>
-        <p>${label.description}</p>
-        <span class="badge-small">${label.chatIds.length} chats</span>
+  suggestedList.innerHTML = labels.map(label => {
+    const visibleChatCount = calculateVisibleChatCount(label.chatIds);
+    return `
+      <div class="label-item suggested" data-id="${label.id}">
+        <div class="label-content">
+          <h3>${label.name}</h3>
+          <p>${label.description}</p>
+          <span class="badge-small">${visibleChatCount} chats</span>
+        </div>
+        <div class="label-actions">
+          <button class="btn btn-small btn-accept" data-label-id="${label.id}">Accept</button>
+          <button class="btn btn-small btn-dismiss" data-label-id="${label.id}">Dismiss</button>
+        </div>
       </div>
-      <div class="label-actions">
-        <button class="btn btn-small btn-accept" data-label-id="${label.id}">Accept</button>
-        <button class="btn btn-small btn-dismiss" data-label-id="${label.id}">Dismiss</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   // Add event listeners for accept/dismiss buttons
   suggestedList.querySelectorAll('.btn-accept').forEach(btn => {
@@ -2227,22 +2367,34 @@ function renderLabels(labels) {
   // Show clear button when there are accepted labels
   clearAcceptedBtn.style.display = 'inline-flex';
 
-  labelList.innerHTML = labels.map(label => `
-    <div class="label-item clickable" data-id="${label.id}" draggable="true">
-      <div class="label-drag-handle">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" opacity="0.4">
-          <path d="M6 4h.01M6 8h.01M6 12h.01M10 4h.01M10 8h.01M10 12h.01" stroke-width="2" stroke-linecap="round"/>
-        </svg>
+  labelList.innerHTML = labels.map(label => {
+    const visibleChatCount = calculateVisibleChatCount(label.chatIds);
+
+    return `
+      <div class="label-item clickable" data-id="${label.id}" draggable="true">
+        <div class="label-drag-handle">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" opacity="0.4">
+            <path d="M6 4h.01M6 8h.01M6 12h.01M10 4h.01M10 8h.01M10 12h.01" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="label-content">
+          <h3>${label.name}</h3>
+          <span class="badge-small">${visibleChatCount} chats</span>
+        </div>
+        <div class="label-item-actions">
+          <button class="label-delete-btn" data-label-id="${label.id}" title="Delete label" draggable="false">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+              <path d="M3 3.5h6M4 3.5V2.5C4 2.22386 4.22386 2 4.5 2h3C7.77614 2 8 2.22386 8 2.5v1M9 3.5v6c0 .5523-.4477 1-1 1H4c-.55228 0-1-.4477-1-1v-6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M5 5.5v3M7 5.5v3" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <svg class="label-arrow" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+            <path d="M7 4L13 10L7 16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
       </div>
-      <div class="label-content">
-        <h3>${label.name}</h3>
-        <span class="badge-small">${label.chatIds.length} chats</span>
-      </div>
-      <svg class="label-arrow" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-        <path d="M7 4L13 10L7 16" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   // Add click listeners to navigate to label detail page
   labelList.querySelectorAll('.label-item').forEach(item => {
@@ -2251,8 +2403,20 @@ function renderLabels(labels) {
       if (e.target.closest('.label-drag-handle')) {
         return;
       }
+      if (e.target.closest('.label-delete-btn')) {
+        return;
+      }
       const labelId = item.getAttribute('data-id');
       openLabelDetail(labelId);
+    });
+  });
+
+  // Add delete button listeners
+  labelList.querySelectorAll('.label-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const labelId = btn.getAttribute('data-label-id');
+      await handleDeleteLabel(labelId);
     });
   });
 
@@ -2591,12 +2755,20 @@ function renderLabelChatList(chats) {
         <div class="chat-item-header">
           <span class="chat-platform-badge ${chat.platform}">${PLATFORMS[chat.platform].name}</span>
           <span class="chat-item-title">${chat.title}</span>
-          <button class="chat-item-link-btn" data-url="${chat.url}" title="Open original chat">
-            <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
-              <path d="M9 6.5V9.5C9 9.77614 8.77614 10 8.5 10H2.5C2.22386 10 2 9.77614 2 9.5V3.5C2 3.22386 2.22386 3 2.5 3H5.5" stroke-width="1.5" stroke-linecap="round"/>
-              <path d="M7 2H10M10 2V5M10 2L6 6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
+          <div class="chat-item-actions">
+            <button class="chat-item-delete-btn" data-chat-id="${chat.id}" title="Remove chat from this label">
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                <path d="M3 3.5h6M4 3.5V2.5C4 2.22386 4.22386 2 4.5 2h3C7.77614 2 8 2.22386 8 2.5v1M9 3.5v6c0 .5523-.4477 1-1 1H4c-.55228 0-1-.4477-1-1v-6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M5 5.5v3M7 5.5v3" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </button>
+            <button class="chat-item-link-btn" data-url="${chat.url}" title="Open original chat">
+              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+                <path d="M9 6.5V9.5C9 9.77614 8.77614 10 8.5 10H2.5C2.22386 10 2 9.77614 2 9.5V3.5C2 3.22386 2.22386 3 2.5 3H5.5" stroke-width="1.5" stroke-linecap="round"/>
+                <path d="M7 2H10M10 2V5M10 2L6 6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="chat-item-summary-headline">${chatSummary}</div>
         <div class="chat-item-meta">
@@ -2637,6 +2809,16 @@ function renderLabelChatList(chats) {
       if (url) {
         chrome.tabs.create({ url, active: true });
       }
+    });
+  });
+
+  // Add event listeners for delete buttons
+  const deleteButtons = labelChatList.querySelectorAll('.chat-item-delete-btn');
+  deleteButtons.forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const chatId = btn.getAttribute('data-chat-id');
+      await handleRemoveChatFromLabel(chatId);
     });
   });
 

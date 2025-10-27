@@ -149,6 +149,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'deleteChat':
+          await handleDeleteChat(message.data.chatId);
+          sendResponse({ success: true });
+          break;
+
+        case 'deleteLabel':
+          await handleDeleteLabel(message.data.labelId);
+          sendResponse({ success: true });
+          break;
+
+        case 'removeChatFromLabel':
+          await handleRemoveChatFromLabel(message.data.labelId, message.data.chatId);
+          sendResponse({ success: true });
+          break;
+
         default:
           console.warn('[Background] Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -201,6 +216,34 @@ async function handleGetAllChats() {
 
   // Convert to array for easier handling
   return Object.values(chats);
+}
+
+/**
+ * Handle deleting a chat and cleaning up label references
+ * @param {string} chatId - Chat ID to delete
+ */
+async function handleDeleteChat(chatId) {
+  console.log('[Background] Deleting chat:', chatId);
+  await StorageService.deleteChat(chatId);
+}
+
+/**
+ * Handle deleting a label and cleaning up chat references
+ * @param {string} labelId - Label ID to delete
+ */
+async function handleDeleteLabel(labelId) {
+  console.log('[Background] Deleting label:', labelId);
+  await StorageService.deleteLabel(labelId);
+}
+
+/**
+ * Handle removing a chat from a specific label
+ * @param {string} labelId - Label ID
+ * @param {string} chatId - Chat ID
+ */
+async function handleRemoveChatFromLabel(labelId, chatId) {
+  console.log('[Background] Removing chat', chatId, 'from label', labelId);
+  await StorageService.removeChatFromLabel(labelId, chatId);
 }
 
 /**

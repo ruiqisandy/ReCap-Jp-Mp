@@ -73,6 +73,50 @@
   }
 
   /**
+   * Extract placeholders describing non-text content within a message container
+   * @param {Element} container - Message container element
+   * @returns {Array<string>} Attachment placeholder strings
+   */
+  function extractNonTextAttachments(container) {
+    if (!container) {
+      return [];
+    }
+
+    const placeholders = [];
+
+    const addPlaceholder = (type, description) => {
+      const details = description ? ` ${description}` : '';
+      placeholders.push(`[${type}]${details}`);
+    };
+
+    container.querySelectorAll('img').forEach(img => {
+      const alt = img.getAttribute('alt')?.trim();
+      addPlaceholder('Image', alt || 'image attachment');
+    });
+
+    container.querySelectorAll('video').forEach(video => {
+      const title = video.getAttribute('title')?.trim();
+      addPlaceholder('Video', title || 'video attachment');
+    });
+
+    container.querySelectorAll('audio').forEach(audio => {
+      const title = audio.getAttribute('title')?.trim();
+      addPlaceholder('Audio', title || 'audio attachment');
+    });
+
+    container.querySelectorAll('a[download]').forEach(link => {
+      const text = link.innerText?.trim() || link.getAttribute('download')?.trim();
+      addPlaceholder('File', text || 'download attachment');
+    });
+
+    if (container.querySelector('canvas')) {
+      addPlaceholder('Canvas', 'embedded drawing');
+    }
+
+    return Array.from(new Set(placeholders));
+  }
+
+  /**
    * Extract conversation list from sidebar
    * @returns {Promise<Array>} Array of conversation metadata objects
    */
@@ -294,12 +338,24 @@
             if (!content) {
               content = el.innerText?.trim() || el.textContent?.trim() || '';
             }
-
-            console.log('[Gemini Scraper] User message content length:', content.length, 'ID:', el.id);
           } else {
             content = el.innerText?.trim() || el.textContent?.trim() || '';
-            console.log('[Gemini Scraper] Assistant message content length:', content.length, 'ID:', el.id);
           }
+
+          const attachments = extractNonTextAttachments(el);
+          if (attachments.length > 0) {
+            const attachmentSummary = attachments.join('\n');
+            content = content
+              ? `${content}\n${attachmentSummary}`
+              : attachmentSummary;
+          }
+
+          console.log(
+            `[Gemini Scraper] ${role === 'user' ? 'User' : 'Assistant'} message content length:`,
+            content.length,
+            'ID:',
+            el.id
+          );
 
           if (content && content.length > 0) {
             messages.push({ role, content });
