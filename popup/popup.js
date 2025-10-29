@@ -36,6 +36,9 @@ const welcomeAiStatus = document.getElementById('welcomeAiStatus');
 const welcomeAiStatusDot = document.getElementById('welcomeAiStatusDot');
 const startImportBtn = document.getElementById('startImportBtn');
 const viewLibraryFromWelcomeBtn = document.getElementById('viewLibraryFromWelcomeBtn');
+const chatgptLimitSelect = document.getElementById('chatgptLimitSelect');
+const claudeLimitSelect = document.getElementById('claudeLimitSelect');
+const geminiLimitSelect = document.getElementById('geminiLimitSelect');
 
 // DOM elements - Progress Screen
 const progressScreen = document.getElementById('progressScreen');
@@ -73,6 +76,7 @@ const summarizeBtn = document.getElementById('summarizeBtn');
 const summarizationProgress = document.getElementById('summarizationProgress');
 const summarizeProgressFill = document.getElementById('summarizeProgressFill');
 const summarizeStatusText = document.getElementById('summarizeStatusText');
+const resetSummariesBtn = document.getElementById('resetSummariesBtn');
 
 // Label generation section
 const labelGenerationSection = document.getElementById('labelGenerationSection');
@@ -101,13 +105,17 @@ const labelList = document.getElementById('labelList');
 const clearAcceptedBtn = document.getElementById('clearAcceptedBtn');
 
 // Footer
-const settingsBtn = document.getElementById('settingsBtn');
 const clearDataBtn = document.getElementById('clearDataBtn');
 
 // Chat list
-const allChatsBadge = document.getElementById('allChatsBadge');
-const chatList = document.getElementById('chatList');
-const filterButtons = document.querySelectorAll('.filter-btn');
+const summarizedBadge = document.getElementById('summarizedBadge');
+const unsummarizedBadge = document.getElementById('unsummarizedBadge');
+const summarizedList = document.getElementById('summarizedList');
+const unsummarizedList = document.getElementById('unsummarizedList');
+
+// Summarization state
+let isSummarizingChats = false;
+let summarizeCancelRequested = false;
 
 /**
  * Initialize popup
@@ -247,11 +255,15 @@ function setupEventListeners() {
   backToWelcomeFromLibraryBtn.addEventListener('click', () => showScreen('welcome'));
   refreshBtn.addEventListener('click', loadLibrary);
   summarizeBtn.addEventListener('click', handleSummarizeChats);
+  if (resetSummariesBtn) {
+    resetSummariesBtn.addEventListener('click', handleReSummarizeChats);
+  }
   clearSuggestedBtn.addEventListener('click', handleClearSuggestedLabels);
   createLabelBtn.addEventListener('click', handleCreateLabel);
   clearAcceptedBtn.addEventListener('click', handleClearAcceptedLabels);
-  settingsBtn.addEventListener('click', handleSettings);
-  clearDataBtn.addEventListener('click', handleClearData);
+  if (clearDataBtn) {
+    clearDataBtn.addEventListener('click', handleClearData);
+  }
 
   if (addPreferredLabelBtn) {
     addPreferredLabelBtn.addEventListener('click', handleAddPreferredLabel);
@@ -303,15 +315,16 @@ function setupEventListeners() {
   });
 
   // Chat filter buttons
-  filterButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      // Remove active class from all buttons
-      filterButtons.forEach(b => b.classList.remove('active'));
-      // Add active class to clicked button
-      btn.classList.add('active');
-      // Filter chats
-      const platform = btn.dataset.platform;
-      filterChats(platform);
+  document.querySelectorAll('.filter-buttons').forEach(group => {
+    const context = group.getAttribute('data-filter-context') || 'unsummarized';
+    const buttons = group.querySelectorAll('.filter-btn');
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        applyFilterForContext(context);
+      });
     });
   });
 }
@@ -323,6 +336,23 @@ async function startImport() {
   console.log('[Popup] Starting import...');
 
   try {
+    const chatgptLimit = getChatgptImportLimit();
+    const claudeLimit = getClaudeImportLimit();
+    const geminiLimit = getGeminiImportLimit();
+
+    const platformConfigs = [
+      { key: 'chatgpt', label: 'ChatGPT', limit: chatgptLimit, countEl: chatgptCountEl },
+      { key: 'claude', label: 'Claude', limit: claudeLimit, countEl: claudeCountEl },
+      { key: 'gemini', label: 'Gemini', limit: geminiLimit, countEl: geminiCountEl }
+    ];
+
+    const activePlatforms = platformConfigs.filter(config => config.limit > 0);
+
+    if (activePlatforms.length === 0) {
+      alert('Select at least one platform to import.');
+      return;
+    }
+
     // Show progress screen
     showScreen('progress');
 
@@ -335,45 +365,27 @@ async function startImport() {
 
     let totalImported = 0;
     const platformResults = {};
+    const progressSlice = 100 / activePlatforms.length;
+    let progressBase = 0;
 
-    // Import from each platform sequentially
-    // ChatGPT: 0-30%
-    if (PLATFORMS.chatgpt.enabled) {
-      statusTextEl.textContent = 'Importing from ChatGPT...';
-      const chatgptCount = await importFromPlatformParallel('chatgpt', (current, total) => {
-        chatgptCountEl.textContent = current;
-        const progress = (current / total) * 30;
-        updateProgress(progress);
-      });
-      platformResults.chatgpt = chatgptCount;
-      totalImported += chatgptCount;
-      console.log('[Popup] ChatGPT import complete:', chatgptCount);
-    }
+    for (const config of activePlatforms) {
+      const chatNoun = config.limit === 1 ? 'chat' : 'chats';
+      statusTextEl.textContent = `Importing latest ${config.limit} ${chatNoun} from ${config.label}...`;
 
-    // Claude: 30-55%
-    if (PLATFORMS.claude.enabled) {
-      statusTextEl.textContent = 'Importing from Claude...';
-      const claudeCount = await importFromPlatformParallel('claude', (current, total) => {
-        claudeCountEl.textContent = current;
-        const progress = 30 + ((current / total) * 25);
-        updateProgress(progress);
-      });
-      platformResults.claude = claudeCount;
-      totalImported += claudeCount;
-      console.log('[Popup] Claude import complete:', claudeCount);
-    }
+      const platformCount = await importFromPlatformParallel(config.key, (current, total) => {
+        config.countEl.textContent = current;
+        const progress = total > 0
+          ? progressBase + ((current / total) * progressSlice)
+          : progressBase;
+        updateProgress(Math.min(progress, 100));
+      }, config.limit);
 
-    // Gemini: 55-100%
-    if (PLATFORMS.gemini.enabled) {
-      statusTextEl.textContent = 'Importing from Gemini...';
-      const geminiCount = await importFromPlatformParallel('gemini', (current, total) => {
-        geminiCountEl.textContent = current;
-        const progress = 55 + ((current / total) * 45);
-        updateProgress(progress);
-      });
-      platformResults.gemini = geminiCount;
-      totalImported += geminiCount;
-      console.log('[Popup] Gemini import complete:', geminiCount);
+      platformResults[config.key] = platformCount;
+      totalImported += platformCount;
+      config.countEl.textContent = String(platformCount);
+      progressBase += progressSlice;
+      updateProgress(Math.min(progressBase, 100));
+      console.log(`[Popup] ${config.label} import complete:`, platformCount);
     }
 
     // Complete
@@ -401,7 +413,7 @@ async function startImport() {
  * @param {Function} onProgress - Progress callback (current, total)
  * @returns {Promise<number>} Number of imported conversations
  */
-async function importFromPlatformParallel(platform, onProgress) {
+async function importFromPlatformParallel(platform, onProgress, limit) {
   console.log(`[Popup] Starting parallel import from ${platform}`);
 
   try {
@@ -415,14 +427,29 @@ async function importFromPlatformParallel(platform, onProgress) {
 
     // Step 2: Extract conversation list from sidebar
     console.log(`[Popup] Extracting conversation list from ${platform}...`);
-    const conversations = await extractConversationList(platformTab.id, platform);
+    let conversations = await extractConversationList(platformTab.id, platform);
+    const totalAvailable = Array.isArray(conversations) ? conversations.length : 0;
 
-    if (!conversations || conversations.length === 0) {
+    if (!conversations || totalAvailable === 0) {
       console.log(`[Popup] No conversations found on ${platform}`);
       return 0;
     }
 
-    console.log(`[Popup] Found ${conversations.length} conversations on ${platform}`);
+    console.log(`[Popup] Found ${totalAvailable} conversations on ${platform}`);
+
+    if (typeof limit === 'number') {
+      if (limit <= 0) {
+        console.log(`[Popup] Skipping ${platform} import (limit set to 0)`);
+        return 0;
+      }
+
+      if (limit > 0 && totalAvailable > limit) {
+        console.log(`[Popup] Limiting ${platform} import to latest ${limit} conversations`);
+        conversations = conversations.slice(0, limit);
+      }
+    }
+
+    console.log(`[Popup] Processing ${conversations.length} conversations on ${platform}`);
 
     // Step 3: Split into batches of MAX_PARALLEL_TABS
     const batches = [];
@@ -856,10 +883,14 @@ function delay(ms) {
  * @param {Function} onProgress - Progress callback (current, total, message)
  * @returns {Promise<number>} Number of chats successfully summarized
  */
-async function summarizeChats(onProgress) {
+async function summarizeChats(onProgress, options = {}) {
   console.log('[Popup] Starting chat summarization');
 
   try {
+    const shouldCancel = typeof options.shouldCancel === 'function'
+      ? options.shouldCancel
+      : () => false;
+
     // Get all chats from storage
     const response = await chrome.runtime.sendMessage({ type: 'getAllChats' });
     if (!response.success) {
@@ -870,7 +901,7 @@ async function summarizeChats(onProgress) {
 
     if (chats.length === 0) {
       console.log('[Popup] No chats to process');
-      return 0;
+      return { processedCount: 0, totalCount: 0, canceled: false };
     }
 
     // Filter only unprocessed chats
@@ -880,16 +911,24 @@ async function summarizeChats(onProgress) {
 
     if (unprocessedChats.length === 0) {
       console.log('[Popup] All chats already processed');
-      return 0;
+      return { processedCount: 0, totalCount: 0, canceled: false };
     }
 
     // Process each unprocessed chat
     let processedCount = 0;
+    let canceled = false;
+    const totalCount = unprocessedChats.length;
 
     for (const chat of unprocessedChats) {
+      if (shouldCancel()) {
+        canceled = true;
+        console.log('[Popup] Summarization cancellation requested. Stopping before next chat.');
+        break;
+      }
+
       try {
         if (onProgress) {
-          onProgress(processedCount, unprocessedChats.length, `Summarizing "${chat.title.substring(0, 30)}..."`);
+          onProgress(processedCount, totalCount, `Summarizing "${chat.title.substring(0, 30)}..."`);
         }
 
         console.log(`[Popup] Processing chat ${processedCount + 1}/${unprocessedChats.length}: ${chat.title}`);
@@ -914,17 +953,45 @@ async function summarizeChats(onProgress) {
           continue;
         }
 
-        // STEP 1: Split messages into pairs
+        // STEP 1: Split messages into pairs (robust pairing for text-only chats)
         const messagePairs = [];
-        for (let i = 0; i < chat.messages.length; i += 2) {
-          const userMsg = chat.messages[i];
-          const assistantMsg = chat.messages[i + 1];
+        const userQueue = [];
 
-          // Only create pair if both user and assistant messages exist
-          if (userMsg && assistantMsg && userMsg.role === 'user' && assistantMsg.role === 'assistant') {
+        for (const message of chat.messages) {
+          if (!message || typeof message.content !== 'string') {
+            continue;
+          }
+
+          const content = message.content.trim();
+          if (!content) {
+            continue;
+          }
+
+          if (message.role === 'user') {
+            userQueue.push(content);
+          } else if (message.role === 'assistant') {
+            const userContent = userQueue.length > 0 ? userQueue.shift() : null;
+
+            if (userContent) {
+              messagePairs.push({
+                user: userContent,
+                assistant: content
+              });
+            } else {
+              messagePairs.push({
+                user: 'User prompt not captured.',
+                assistant: content
+              });
+            }
+          }
+        }
+
+        while (userQueue.length > 0) {
+          const remainingUser = userQueue.shift();
+          if (remainingUser && remainingUser.trim().length > 0) {
             messagePairs.push({
-              user: userMsg.content,
-              assistant: assistantMsg.content
+              user: remainingUser,
+              assistant: 'Assistant response not captured.'
             });
           }
         }
@@ -1005,8 +1072,8 @@ async function summarizeChats(onProgress) {
       }
     }
 
-    console.log(`[Popup] Successfully summarized ${processedCount}/${unprocessedChats.length} chats`);
-    return processedCount;
+    console.log(`[Popup] Summarization complete: ${processedCount}/${totalCount} chats processed${canceled ? ' (stopped early)' : ''}`);
+    return { processedCount, totalCount, canceled };
 
   } catch (error) {
     console.error('[Popup] Error in chat summarization:', error);
@@ -1244,44 +1311,173 @@ async function runWorkflowClassification(mode) {
 async function handleSummarizeChats() {
   console.log('[Popup] Starting chat summarization from library screen');
 
-  try {
-    // Disable button and show progress
+  if (!summarizeBtn) {
+    return;
+  }
+
+  // If already summarizing, interpret click as a stop request
+  if (isSummarizingChats) {
+    if (summarizeCancelRequested) {
+      console.log('[Popup] Summarization stop already requested');
+      return;
+    }
+
+    summarizeCancelRequested = true;
     summarizeBtn.disabled = true;
-    summarizeBtn.textContent = 'Summarizing...';
+    summarizeBtn.textContent = 'Stopping...';
+    if (summarizationProgress) {
+      summarizationProgress.style.display = 'block';
+      summarizeStatusText.textContent = 'Stopping after current chat...';
+    }
+    return;
+  }
+
+  isSummarizingChats = true;
+  summarizeCancelRequested = false;
+
+  if (summarizationProgress) {
     summarizationProgress.style.display = 'block';
     summarizeProgressFill.style.width = '0%';
     summarizeStatusText.textContent = 'Initializing summarization...';
+  }
 
-    // Run summarization
-    const count = await summarizeChats((current, total, message) => {
-      // Update progress
-      const progress = (current / total) * 100;
+  summarizeBtn.disabled = false;
+  summarizeBtn.textContent = 'Stop Summarizing';
+  if (resetSummariesBtn) {
+    resetSummariesBtn.disabled = true;
+  }
+
+  let summaryResult = null;
+  let summaryError = null;
+  let hideDelay = 2000;
+  let shouldHideProgress = false;
+
+  try {
+    summaryResult = await summarizeChats((current, total, message) => {
+      if (!summarizationProgress) {
+        return;
+      }
+
+      const denominator = total > 0 ? total : 1;
+      const progress = Math.min((current / denominator) * 100, 100);
       summarizeProgressFill.style.width = `${progress}%`;
       summarizeStatusText.textContent = message || `Summarizing ${current}/${total} chats...`;
+    }, {
+      shouldCancel: () => summarizeCancelRequested
     });
 
-    // Success
-    summarizeProgressFill.style.width = '100%';
-    summarizeStatusText.textContent = `Successfully summarized ${count} chats!`;
+    shouldHideProgress = true;
 
-    // Wait a moment then hide progress and refresh library
-    setTimeout(async () => {
-      summarizationProgress.style.display = 'none';
-      summarizeBtn.disabled = false;
-      summarizeBtn.textContent = 'Summarize Chats';
-      await loadLibrary();
-    }, 2000);
+    if (summarizationProgress && summaryResult) {
+      const { processedCount, totalCount, canceled } = summaryResult;
+
+      if (totalCount === 0) {
+        summarizeProgressFill.style.width = '100%';
+        summarizeStatusText.textContent = 'All chats already summarized.';
+      } else if (canceled) {
+        const progress = Math.min((processedCount / totalCount) * 100, 100);
+        summarizeProgressFill.style.width = `${progress}%`;
+        summarizeStatusText.textContent = `Stopped after ${processedCount} of ${totalCount} chats.`;
+      } else {
+        summarizeProgressFill.style.width = '100%';
+        summarizeStatusText.textContent = `Successfully summarized ${processedCount} chats!`;
+      }
+    }
 
   } catch (error) {
+    summaryError = error;
     console.error('[Popup] Summarization error:', error);
-    summarizeStatusText.textContent = 'Error: ' + error.message;
+    shouldHideProgress = true;
+    hideDelay = 5000;
+
+    if (summarizationProgress) {
+      summarizeStatusText.textContent = 'Error: ' + error.message;
+    }
+
+  } finally {
+    isSummarizingChats = false;
+    summarizeCancelRequested = false;
+
     summarizeBtn.disabled = false;
     summarizeBtn.textContent = 'Summarize Chats';
+    if (resetSummariesBtn) {
+      resetSummariesBtn.disabled = false;
+      resetSummariesBtn.textContent = 'Re-run Summaries';
+    }
 
-    // Show error for 5 seconds then hide
-    setTimeout(() => {
-      summarizationProgress.style.display = 'none';
-    }, 5000);
+    try {
+      await loadLibrary();
+    } catch (error) {
+      console.error('[Popup] Error refreshing library after summarization:', error);
+    }
+
+    if (summarizationProgress && shouldHideProgress) {
+      setTimeout(() => {
+        summarizationProgress.style.display = 'none';
+      }, hideDelay);
+    }
+  }
+
+  if (summaryError) {
+    showToast('Summarization failed. Check the status message for details.', 'error');
+  }
+}
+
+/**
+ * Handle reset-and-resummarize action
+ */
+async function handleReSummarizeChats() {
+  console.log('[Popup] Re-running chat summaries');
+
+  const confirmed = confirm('This will clear existing summaries and generate them again.\n\nImported chats remain untouched. Continue?');
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    if (resetSummariesBtn) {
+      resetSummariesBtn.disabled = true;
+      resetSummariesBtn.textContent = 'Clearing...';
+    }
+
+    if (summarizationProgress) {
+      summarizationProgress.style.display = 'block';
+      summarizeProgressFill.style.width = '0%';
+      summarizeStatusText.textContent = 'Clearing existing summaries...';
+    }
+
+    const response = await chrome.runtime.sendMessage({ type: 'resetSummaries' });
+    if (!response?.success) {
+      throw new Error(response?.error || 'Failed to clear summaries');
+    }
+
+    const resetCount = response.data?.resetCount;
+    const toastMessage = typeof resetCount === 'number'
+      ? `Cleared summaries for ${resetCount} chats.`
+      : 'Cleared existing summaries.';
+    showToast(toastMessage);
+
+    await loadLibrary();
+
+    if (resetSummariesBtn) {
+      resetSummariesBtn.textContent = 'Re-run Summaries';
+    }
+
+    await handleSummarizeChats();
+
+  } catch (error) {
+    console.error('[Popup] Re-summarize error:', error);
+    if (summarizationProgress) {
+      summarizeStatusText.textContent = 'Error: ' + error.message;
+      setTimeout(() => {
+        summarizationProgress.style.display = 'none';
+      }, 5000);
+    }
+    if (resetSummariesBtn) {
+      resetSummariesBtn.disabled = false;
+      resetSummariesBtn.textContent = 'Re-run Summaries';
+    }
+    alert('Unable to re-run summaries: ' + error.message);
   }
 }
 
@@ -1388,14 +1584,27 @@ async function loadLibrary() {
         summarizationSection.style.display = 'block';
       }
 
-      if (unprocessedChats.length > 0) {
+      if (isSummarizingChats) {
+        summarizeBtn.disabled = summarizeCancelRequested;
+        summarizeBtn.textContent = summarizeCancelRequested ? 'Stopping...' : 'Stop Summarizing';
+      } else if (unprocessedChats.length > 0) {
         summarizeBtn.disabled = false;
         summarizeBtn.textContent = `Summarize Chats (${unprocessedChats.length})`;
       } else {
         summarizeBtn.disabled = true;
         summarizeBtn.textContent = 'Summaries Up To Date';
-        if (summarizationProgress) {
+        if (summarizationProgress && !isSummarizingChats) {
           summarizationProgress.style.display = 'none';
+        }
+      }
+
+      if (resetSummariesBtn) {
+        if (processedChats.length > 0) {
+          resetSummariesBtn.disabled = false;
+          resetSummariesBtn.textContent = 'Re-run Summaries';
+        } else {
+          resetSummariesBtn.disabled = true;
+          resetSummariesBtn.textContent = 'Re-run Summaries';
         }
       }
     } else {
@@ -1462,15 +1671,23 @@ async function loadAllChats() {
 
       // Filter out chats we can't summarize or display
       const visibleChats = chats.filter(chat => !chat.excludeFromLibrary);
+      const summarizedChats = visibleChats.filter(chat => chat.processed && chat.chatSummary);
+      const unsummarizedChats = visibleChats.filter(chat => !chat.processed || !chat.chatSummary);
 
-      // Update badge
-      allChatsBadge.textContent = visibleChats.length;
-
-      // Store chats globally for filtering
+      // Store chats globally for filtering and label counts
       window.allChats = visibleChats;
+      window.summarizedChats = summarizedChats;
+      window.unsummarizedChats = unsummarizedChats;
 
-      // Render all chats initially
-      renderChatList(visibleChats);
+      if (summarizedBadge) {
+        summarizedBadge.textContent = summarizedChats.length;
+      }
+      if (unsummarizedBadge) {
+        unsummarizedBadge.textContent = unsummarizedChats.length;
+      }
+
+      applyFilterForContext('summarized');
+      applyFilterForContext('unsummarized');
     }
   } catch (error) {
     console.error('[Popup] Error loading chats:', error);
@@ -1481,13 +1698,23 @@ async function loadAllChats() {
  * Render chat list
  * @param {Array} chats - Array of chat objects
  */
-function renderChatList(chats) {
-  if (chats.length === 0) {
-    chatList.innerHTML = '<div class="empty-state"><p>No conversations yet. Import chats to see them here.</p></div>';
+function renderChatList(chats, options = {}) {
+  const {
+    container = unsummarizedList,
+    context = 'library',
+    emptyMessage = 'No conversations yet. Import chats to see them here.'
+  } = options;
+
+  if (!container) {
     return;
   }
 
-  chatList.innerHTML = chats.map(chat => {
+  if (!Array.isArray(chats) || chats.length === 0) {
+    container.innerHTML = `<div class="empty-state"><p>${emptyMessage}</p></div>`;
+    return;
+  }
+
+  container.innerHTML = chats.map(chat => {
     const messageCount = chat.messages ? chat.messages.length : 0;
     const date = new Date(chat.date).toLocaleDateString('en-US', {
       month: 'short',
@@ -1552,7 +1779,7 @@ function renderChatList(chats) {
   }).join('');
 
   // Add event listeners for "View Original" buttons
-  const linkButtons = chatList.querySelectorAll('.chat-item-link-btn');
+  const linkButtons = container.querySelectorAll('.chat-item-link-btn');
   linkButtons.forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation(); // Prevent chat item click
@@ -1564,7 +1791,7 @@ function renderChatList(chats) {
   });
 
   // Add event listeners for delete buttons
-  const deleteButtons = chatList.querySelectorAll('.chat-item-delete-btn');
+  const deleteButtons = container.querySelectorAll('.chat-item-delete-btn');
   deleteButtons.forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -1574,19 +1801,19 @@ function renderChatList(chats) {
   });
 
   // Add event listeners for expand/collapse buttons
-  const expandButtons = chatList.querySelectorAll('.chat-item-expand-btn');
+  const expandButtons = container.querySelectorAll('.chat-item-expand-btn');
   expandButtons.forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const chatId = btn.getAttribute('data-chat-id');
-      toggleChatExpansion(chatId, btn, 'library');
+      toggleChatExpansion(chatId, btn, context);
     });
   });
 
   // Restore expansion states
   expandedLibraryChats.forEach(chatId => {
-    const expansion = chatList.querySelector(`.chat-item-expansion[data-chat-id="${chatId}"]`);
-    const button = chatList.querySelector(`.chat-item-expand-btn[data-chat-id="${chatId}"]`);
+    const expansion = container.querySelector(`.chat-item-expansion[data-chat-id="${chatId}"]`);
+    const button = container.querySelector(`.chat-item-expand-btn[data-chat-id="${chatId}"]`);
     if (expansion && button) {
       expansion.classList.add('expanded');
       const chevron = button.querySelector('.chevron-icon');
@@ -1601,20 +1828,55 @@ function renderChatList(chats) {
  * Filter chats by platform
  * @param {string} platform - Platform name or 'all'
  */
-function filterChats(platform) {
-  if (!window.allChats) {
+function applyFilterForContext(context) {
+  const platform = getActiveFilterPlatform(context);
+
+  let chats = [];
+  let container = null;
+  let emptyMessage = 'No conversations yet. Import chats to see them here.';
+  let renderContext = 'library';
+
+  if (context === 'summarized') {
+    chats = window.summarizedChats || [];
+    container = summarizedList;
+    emptyMessage = 'No summarized chats yet. Run Summarize to generate them.';
+    renderContext = 'summarized';
+  } else if (context === 'unsummarized') {
+    chats = window.unsummarizedChats || [];
+    container = unsummarizedList;
+    emptyMessage = 'No unsummarized chats. Import or summarize new chats to populate this list.';
+    renderContext = 'unsummarized';
+  } else {
+    console.warn('[Popup] Unknown filter context:', context);
     return;
   }
 
-  let filteredChats;
-
-  if (platform === 'all') {
-    filteredChats = window.allChats;
-  } else {
-    filteredChats = window.allChats.filter(chat => chat.platform === platform);
+  if (platform !== 'all') {
+    chats = chats.filter(chat => chat.platform === platform);
   }
 
-  renderChatList(filteredChats);
+  renderChatList(chats, {
+    container,
+    context: renderContext,
+    emptyMessage
+  });
+}
+
+function getActiveFilterPlatform(context) {
+  const group = document.querySelector(`.filter-buttons[data-filter-context="${context}"]`);
+  if (!group) {
+    return 'all';
+  }
+
+  let activeBtn = group.querySelector('.filter-btn.active');
+  if (!activeBtn) {
+    activeBtn = group.querySelector('.filter-btn');
+    if (activeBtn) {
+      activeBtn.classList.add('active');
+    }
+  }
+
+  return activeBtn ? (activeBtn.dataset.platform || 'all') : 'all';
 }
 
 /**
@@ -1627,7 +1889,20 @@ function toggleChatExpansion(chatId, button, context = 'library') {
   console.log(`[Popup] toggleChatExpansion called: chatId=${chatId}, context=${context}`);
 
   // Determine container scope based on context
-  const container = context === 'label' ? labelChatList : chatList;
+  let container;
+  switch (context) {
+    case 'label':
+      container = labelChatList;
+      break;
+    case 'summarized':
+      container = summarizedList;
+      break;
+    case 'unsummarized':
+    case 'library':
+    default:
+      container = unsummarizedList;
+      break;
+  }
 
   let expansion = null;
 
@@ -1698,7 +1973,7 @@ function toggleChatExpansion(chatId, button, context = 'library') {
  * @param {'library'|'label'} context - Current view context
  */
 async function handleDeleteChat(chatId, context = 'library') {
-  const confirmed = confirm('Delete this chat?\n\nIt will be removed from All Conversations and any labels.');
+  const confirmed = confirm('Delete this chat?\n\nIt will be removed from your library and any labels.');
 
   if (!confirmed) {
     return;
@@ -1736,7 +2011,7 @@ async function handleRemoveChatFromLabel(chatId) {
     return;
   }
 
-  const confirmed = confirm('Remove this chat from this label?\n\nThe chat will stay in All Conversations and other labels.');
+  const confirmed = confirm('Remove this chat from this label?\n\nThe chat will stay in your library and other labels.');
 
   if (!confirmed) {
     return;
@@ -3003,13 +3278,6 @@ async function handleCreateLabel() {
 }
 
 /**
- * Handle settings
- */
-function handleSettings() {
-  alert('Settings panel coming soon!');
-}
-
-/**
  * Handle clear data
  */
 async function handleClearData() {
@@ -3028,6 +3296,57 @@ async function handleClearData() {
     console.error('[Popup] Error clearing data:', error);
     alert('Error clearing data: ' + error.message);
   }
+}
+
+/**
+ * Get the user-selected ChatGPT import limit
+ * @returns {number} Number of ChatGPT conversations to import (default 200)
+ */
+function getChatgptImportLimit() {
+  if (!chatgptLimitSelect) {
+    return 200;
+  }
+
+  const value = parseInt(chatgptLimitSelect.value, 10);
+  if (Number.isNaN(value)) {
+    return 200;
+  }
+
+  return Math.min(Math.max(value, 0), 200);
+}
+
+/**
+ * Get the user-selected Claude import limit
+ * @returns {number} Number of Claude conversations to import (default 50)
+ */
+function getClaudeImportLimit() {
+  if (!claudeLimitSelect) {
+    return 50;
+  }
+
+  const value = parseInt(claudeLimitSelect.value, 10);
+  if (Number.isNaN(value)) {
+    return 50;
+  }
+
+  return Math.min(Math.max(value, 0), 50);
+}
+
+/**
+ * Get the user-selected Gemini import limit
+ * @returns {number} Number of Gemini conversations to import (default 50)
+ */
+function getGeminiImportLimit() {
+  if (!geminiLimitSelect) {
+    return 50;
+  }
+
+  const value = parseInt(geminiLimitSelect.value, 10);
+  if (Number.isNaN(value)) {
+    return 50;
+  }
+
+  return Math.min(Math.max(value, 0), 50);
 }
 
 // Initialize when DOM is ready

@@ -140,6 +140,55 @@ body {
   opacity: 0.8;
 }
 
+.import-limits {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.import-limits .import-limit {
+  margin-bottom: 0;
+}
+
+.import-limit {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 24px;
+}
+
+.import-limit label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.import-limit select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #111827;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.import-limit select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.import-limit-hint {
+  font-size: 12px;
+  color: #6b7280;
+}
+
 .hint-text {
   font-size: 13px;
   color: #6b7280;
@@ -295,16 +344,17 @@ body {
   font-weight: 700;
 }
 
-.library-header .btn-icon-only {
+.library-header .back-button {
   position: absolute;
-}
-
-.library-header .btn-icon-only:first-child {
   left: 16px;
 }
 
-.library-header .btn-icon-only:last-child {
+.library-header-actions {
+  position: absolute;
   right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .library-main {
@@ -346,6 +396,13 @@ body {
   margin: 0;
 }
 
+.mini-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+}
+
 .mini-progress {
   display: flex;
   flex-direction: column;
@@ -362,6 +419,39 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.library-section.is-scrollable {
+  max-height: 460px;
+  overflow: hidden;
+}
+
+.library-section.is-scrollable .section-header {
+  flex-shrink: 0;
+}
+
+.library-section.is-scrollable .filter-buttons {
+  flex-shrink: 0;
+}
+
+.list-container.scrollable {
+  overflow-y: auto;
+  max-height: 360px;
+  padding-right: 6px;
+}
+
+.list-container.scrollable::-webkit-scrollbar {
+  width: 6px;
+}
+
+.list-container.scrollable::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.45);
+  border-radius: 999px;
+}
+
+.list-container.scrollable::-webkit-scrollbar-track {
+  background: rgba(229, 231, 235, 0.4);
+  border-radius: 999px;
 }
 
 /* Preferred Labels */
@@ -874,6 +964,15 @@ body {
 
 .btn-icon-only:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+.btn-icon-danger {
+  color: #fee2e2;
+}
+
+.btn-icon-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fecaca;
 }
 
 .btn-icon {
