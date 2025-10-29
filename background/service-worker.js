@@ -164,6 +164,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ success: true });
           break;
 
+        case 'resetSummaries':
+          const resetCount = await handleResetSummaries();
+          sendResponse({ success: true, data: { resetCount } });
+          break;
+
         default:
           console.warn('[Background] Unknown message type:', message.type);
           sendResponse({ success: false, error: 'Unknown message type' });
@@ -244,6 +249,16 @@ async function handleDeleteLabel(labelId) {
 async function handleRemoveChatFromLabel(labelId, chatId) {
   console.log('[Background] Removing chat', chatId, 'from label', labelId);
   await StorageService.removeChatFromLabel(labelId, chatId);
+}
+
+/**
+ * Handle resetting chat summaries
+ * @returns {Promise<number>} Number of chats reset
+ */
+async function handleResetSummaries() {
+  console.log('[Background] Resetting chat summaries');
+  const resetCount = await StorageService.resetAllSummaries();
+  return resetCount;
 }
 
 /**
