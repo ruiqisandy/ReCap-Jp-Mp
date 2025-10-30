@@ -166,7 +166,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         case 'resetSummaries':
           const resetCount = await handleResetSummaries();
-          sendResponse({ success: true, data: { resetCount } });
+          const labelClearStats = await handleClearLabelAssignments();
+          sendResponse({ success: true, data: { resetCount, labelClearStats } });
           break;
 
         default:
@@ -259,6 +260,12 @@ async function handleResetSummaries() {
   console.log('[Background] Resetting chat summaries');
   const resetCount = await StorageService.resetAllSummaries();
   return resetCount;
+}
+
+async function handleClearLabelAssignments() {
+  console.log('[Background] Clearing label assignments');
+  const stats = await StorageService.clearAllLabelAssignments();
+  return stats;
 }
 
 /**

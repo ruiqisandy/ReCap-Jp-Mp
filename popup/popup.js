@@ -76,7 +76,9 @@ const summarizeBtn = document.getElementById('summarizeBtn');
 const summarizationProgress = document.getElementById('summarizationProgress');
 const summarizeProgressFill = document.getElementById('summarizeProgressFill');
 const summarizeStatusText = document.getElementById('summarizeStatusText');
-const resetSummariesBtn = document.getElementById('resetSummariesBtn');
+const summarizeHeading = document.getElementById('summarizeHeading');
+const summarizeActionLabel = document.getElementById('summarizeActionLabel');
+const summarizeCount = document.getElementById('summarizeCount');
 
 // Label generation section
 const labelGenerationSection = document.getElementById('labelGenerationSection');
@@ -104,18 +106,30 @@ const createLabelBtn = document.getElementById('createLabelBtn');
 const labelList = document.getElementById('labelList');
 const clearAcceptedBtn = document.getElementById('clearAcceptedBtn');
 
-// Footer
-const clearDataBtn = document.getElementById('clearDataBtn');
+// Library actions menu
+const libraryDangerToggle = document.getElementById('libraryDangerToggle');
+const libraryDangerMenu = document.getElementById('libraryDangerMenu');
+const dropSummariesOption = document.getElementById('dropSummariesOption');
+const deleteDataOption = document.getElementById('deleteDataOption');
+const libraryDangerWrapper = libraryDangerToggle ? libraryDangerToggle.closest('.library-danger') : null;
 
 // Chat list
 const summarizedBadge = document.getElementById('summarizedBadge');
 const unsummarizedBadge = document.getElementById('unsummarizedBadge');
 const summarizedList = document.getElementById('summarizedList');
 const unsummarizedList = document.getElementById('unsummarizedList');
+const libraryViewElements = Array.from(document.querySelectorAll('.library-view'));
+const libraryTabButtons = Array.from(document.querySelectorAll('.library-tab'));
 
 // Summarization state
 let isSummarizingChats = false;
 let summarizeCancelRequested = false;
+let currentLibraryView = 'library';
+const libraryViewScrollPositions = {
+  library: 0,
+  summarized: 0,
+  unsummarized: 0
+};
 
 /**
  * Initialize popup
@@ -219,6 +233,7 @@ function showScreen(screenName) {
       break;
     case 'library':
       libraryScreen.style.display = 'block';
+      switchLibraryView(currentLibraryView, { force: true });
       break;
     case 'workflow':
       if (labelWorkflowScreen) {
@@ -255,14 +270,52 @@ function setupEventListeners() {
   backToWelcomeFromLibraryBtn.addEventListener('click', () => showScreen('welcome'));
   refreshBtn.addEventListener('click', loadLibrary);
   summarizeBtn.addEventListener('click', handleSummarizeChats);
-  if (resetSummariesBtn) {
-    resetSummariesBtn.addEventListener('click', handleReSummarizeChats);
-  }
   clearSuggestedBtn.addEventListener('click', handleClearSuggestedLabels);
   createLabelBtn.addEventListener('click', handleCreateLabel);
   clearAcceptedBtn.addEventListener('click', handleClearAcceptedLabels);
-  if (clearDataBtn) {
-    clearDataBtn.addEventListener('click', handleClearData);
+
+  if (libraryDangerToggle && libraryDangerMenu && libraryDangerWrapper) {
+    libraryDangerToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const isOpen = libraryDangerWrapper.classList.contains('open');
+      closeLibraryDangerMenu();
+      if (!isOpen) {
+        openLibraryDangerMenu();
+      }
+    });
+  }
+  if (dropSummariesOption) {
+    dropSummariesOption.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      closeLibraryDangerMenu();
+      await handleDropSummaries();
+    });
+  }
+  if (deleteDataOption) {
+    deleteDataOption.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      closeLibraryDangerMenu();
+      await handleClearData();
+    });
+  }
+  if (libraryDangerWrapper) {
+    document.addEventListener('click', () => {
+      closeLibraryDangerMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeLibraryDangerMenu();
+      }
+    });
+  }
+
+  if (libraryTabButtons.length > 0) {
+    libraryTabButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetView = btn.getAttribute('data-library-target');
+        switchLibraryView(targetView);
+      });
+    });
   }
 
   if (addPreferredLabelBtn) {
@@ -928,7 +981,10 @@ async function summarizeChats(onProgress, options = {}) {
 
       try {
         if (onProgress) {
-          onProgress(processedCount, totalCount, `Summarizing "${chat.title.substring(0, 30)}..."`);
+          const hasTitle = typeof chat.title === 'string' && chat.title.length > 0;
+          const titlePreview = hasTitle ? chat.title.substring(0, 40) : 'Chat';
+          const titleLabel = hasTitle && chat.title.length > 40 ? `${titlePreview}...` : titlePreview;
+          onProgress(processedCount, totalCount, `"${titleLabel}" - generating highlights`);
         }
 
         console.log(`[Popup] Processing chat ${processedCount + 1}/${unprocessedChats.length}: ${chat.title}`);
@@ -1324,9 +1380,16 @@ async function handleSummarizeChats() {
 
     summarizeCancelRequested = true;
     summarizeBtn.disabled = true;
-    summarizeBtn.textContent = 'Stopping...';
+    summarizeBtn.classList.add('is-danger', 'is-active');
+    if (summarizeActionLabel) {
+      summarizeActionLabel.textContent = 'Stopping...';
+    }
+    if (summarizeCount) {
+      summarizeCount.textContent = '';
+    }
+    summarizeBtn.setAttribute('aria-label', 'Stopping summarization');
     if (summarizationProgress) {
-      summarizationProgress.style.display = 'block';
+      summarizationProgress.style.display = 'flex';
       summarizeStatusText.textContent = 'Stopping after current chat...';
     }
     return;
@@ -1336,16 +1399,23 @@ async function handleSummarizeChats() {
   summarizeCancelRequested = false;
 
   if (summarizationProgress) {
-    summarizationProgress.style.display = 'block';
+    summarizationProgress.style.display = 'flex';
     summarizeProgressFill.style.width = '0%';
     summarizeStatusText.textContent = 'Initializing summarization...';
   }
 
-  summarizeBtn.disabled = false;
-  summarizeBtn.textContent = 'Stop Summarizing';
-  if (resetSummariesBtn) {
-    resetSummariesBtn.disabled = true;
+  if (summarizeHeading) {
+    summarizeHeading.style.display = 'none';
   }
+  summarizeBtn.disabled = false;
+  summarizeBtn.classList.add('is-danger', 'is-active');
+  if (summarizeActionLabel) {
+    summarizeActionLabel.textContent = 'Stop';
+  }
+  if (summarizeCount) {
+    summarizeCount.textContent = '';
+  }
+  summarizeBtn.setAttribute('aria-label', 'Stop summarization');
 
   let summaryResult = null;
   let summaryError = null;
@@ -1361,7 +1431,7 @@ async function handleSummarizeChats() {
       const denominator = total > 0 ? total : 1;
       const progress = Math.min((current / denominator) * 100, 100);
       summarizeProgressFill.style.width = `${progress}%`;
-      summarizeStatusText.textContent = message || `Summarizing ${current}/${total} chats...`;
+      summarizeStatusText.textContent = message || `${current}/${total} chats - generating highlights...`;
     }, {
       shouldCancel: () => summarizeCancelRequested
     });
@@ -1399,11 +1469,14 @@ async function handleSummarizeChats() {
     summarizeCancelRequested = false;
 
     summarizeBtn.disabled = false;
-    summarizeBtn.textContent = 'Summarize Chats';
-    if (resetSummariesBtn) {
-      resetSummariesBtn.disabled = false;
-      resetSummariesBtn.textContent = 'Re-run Summaries';
+    summarizeBtn.classList.remove('is-danger', 'is-active');
+    if (summarizeActionLabel) {
+      summarizeActionLabel.textContent = 'Summarize';
     }
+    if (summarizeCount) {
+      summarizeCount.textContent = '0';
+    }
+    summarizeBtn.setAttribute('aria-label', 'Summarize chats');
 
     try {
       await loadLibrary();
@@ -1424,60 +1497,76 @@ async function handleSummarizeChats() {
 }
 
 /**
- * Handle reset-and-resummarize action
+ * Drop existing summaries without deleting chats
  */
-async function handleReSummarizeChats() {
-  console.log('[Popup] Re-running chat summaries');
+async function handleDropSummaries() {
+  console.log('[Popup] Dropping chat summaries');
 
-  const confirmed = confirm('This will clear existing summaries and generate them again.\n\nImported chats remain untouched. Continue?');
+  const confirmed = confirm('This will remove summaries for every chat and return them to the unsummarized list.\n\nImported chats remain intact. Continue?');
   if (!confirmed) {
     return;
   }
 
   try {
-    if (resetSummariesBtn) {
-      resetSummariesBtn.disabled = true;
-      resetSummariesBtn.textContent = 'Clearing...';
+    summarizeBtn.disabled = true;
+    summarizeBtn.classList.add('is-active');
+    if (summarizeActionLabel) {
+      summarizeActionLabel.textContent = 'Working...';
     }
-
+    if (summarizeCount) {
+      summarizeCount.textContent = '';
+    }
+    summarizeBtn.setAttribute('aria-label', 'Dropping summaries');
+    if (summarizeHeading) {
+      summarizeHeading.style.display = 'none';
+    }
     if (summarizationProgress) {
-      summarizationProgress.style.display = 'block';
+      summarizationProgress.style.display = 'flex';
       summarizeProgressFill.style.width = '0%';
-      summarizeStatusText.textContent = 'Clearing existing summaries...';
+      summarizeStatusText.textContent = 'Dropping summaries...';
     }
 
     const response = await chrome.runtime.sendMessage({ type: 'resetSummaries' });
     if (!response?.success) {
-      throw new Error(response?.error || 'Failed to clear summaries');
+      throw new Error(response?.error || 'Failed to drop summaries');
     }
 
     const resetCount = response.data?.resetCount;
+    const labelStats = response.data?.labelClearStats || {};
+    const labelMessage = labelStats.labelsCleared
+      ? ` Removed ${labelStats.labelsCleared} label assignments.`
+      : '';
     const toastMessage = typeof resetCount === 'number'
-      ? `Cleared summaries for ${resetCount} chats.`
-      : 'Cleared existing summaries.';
+      ? `Dropped summaries for ${resetCount} chats.${labelMessage}`
+      : `Summaries cleared successfully.${labelMessage}`;
     showToast(toastMessage);
 
     await loadLibrary();
 
-    if (resetSummariesBtn) {
-      resetSummariesBtn.textContent = 'Re-run Summaries';
+    if (summarizationProgress) {
+      summarizeStatusText.textContent = 'Summaries cleared.';
+      setTimeout(() => {
+        summarizationProgress.style.display = 'none';
+      }, 3000);
     }
-
-    await handleSummarizeChats();
-
   } catch (error) {
-    console.error('[Popup] Re-summarize error:', error);
+    console.error('[Popup] Drop summaries error:', error);
+    showToast('Unable to drop summaries: ' + error.message, 'error');
     if (summarizationProgress) {
       summarizeStatusText.textContent = 'Error: ' + error.message;
       setTimeout(() => {
         summarizationProgress.style.display = 'none';
       }, 5000);
     }
-    if (resetSummariesBtn) {
-      resetSummariesBtn.disabled = false;
-      resetSummariesBtn.textContent = 'Re-run Summaries';
+  } finally {
+    summarizeBtn.disabled = false;
+    summarizeBtn.classList.remove('is-active', 'is-danger');
+    if (summarizeActionLabel) {
+      summarizeActionLabel.textContent = 'Summarize';
     }
-    alert('Unable to re-run summaries: ' + error.message);
+    if (summarizeCount && !summarizeCount.textContent) {
+      summarizeCount.textContent = '0';
+    }
   }
 }
 
@@ -1584,29 +1673,42 @@ async function loadLibrary() {
         summarizationSection.style.display = 'block';
       }
 
-      if (isSummarizingChats) {
-        summarizeBtn.disabled = summarizeCancelRequested;
-        summarizeBtn.textContent = summarizeCancelRequested ? 'Stopping...' : 'Stop Summarizing';
-      } else if (unprocessedChats.length > 0) {
-        summarizeBtn.disabled = false;
-        summarizeBtn.textContent = `Summarize Chats (${unprocessedChats.length})`;
-      } else {
-        summarizeBtn.disabled = true;
-        summarizeBtn.textContent = 'Summaries Up To Date';
-        if (summarizationProgress && !isSummarizingChats) {
-          summarizationProgress.style.display = 'none';
+      const pendingCount = unprocessedChats.length;
+
+      if (summarizeHeading) {
+        summarizeHeading.style.display = isSummarizingChats ? 'none' : 'block';
+        summarizeHeading.textContent = pendingCount > 0 ? 'Summarize Conversations' : 'Summaries Up To Date';
+      }
+
+      if (summarizationProgress) {
+        summarizationProgress.style.display = isSummarizingChats ? 'flex' : 'none';
+      }
+
+      if (summarizeBtn) {
+        if (isSummarizingChats) {
+          summarizeBtn.disabled = summarizeCancelRequested;
+          summarizeBtn.classList.add('is-danger', 'is-active');
+          if (summarizeActionLabel) {
+            summarizeActionLabel.textContent = summarizeCancelRequested ? 'Stopping...' : 'Stop';
+          }
+          if (summarizeCount) {
+            summarizeCount.textContent = '';
+          }
+          summarizeBtn.setAttribute('aria-label', summarizeCancelRequested ? 'Stopping summarization' : 'Stop summarization');
+        } else {
+          summarizeBtn.classList.remove('is-danger', 'is-active');
+          const hasPending = pendingCount > 0;
+          summarizeBtn.disabled = !hasPending;
+          if (summarizeActionLabel) {
+            summarizeActionLabel.textContent = hasPending ? 'Summarize' : 'Summarized';
+          }
+          if (summarizeCount) {
+            summarizeCount.textContent = pendingCount.toString();
+          }
+          summarizeBtn.setAttribute('aria-label', hasPending ? `Summarize ${pendingCount} chats` : 'All chats summarized');
         }
       }
 
-      if (resetSummariesBtn) {
-        if (processedChats.length > 0) {
-          resetSummariesBtn.disabled = false;
-          resetSummariesBtn.textContent = 'Re-run Summaries';
-        } else {
-          resetSummariesBtn.disabled = true;
-          resetSummariesBtn.textContent = 'Re-run Summaries';
-        }
-      }
     } else {
       processedChatCount = 0;
     }
@@ -1822,6 +1924,84 @@ function renderChatList(chats, options = {}) {
       }
     }
   });
+}
+
+/**
+ * Switch between library views (library, summarized, unsummarized)
+ * @param {string} targetView
+ * @param {{force?: boolean}} options
+ */
+function switchLibraryView(targetView, options = {}) {
+  const { force = false } = options;
+
+  if (libraryViewElements.length === 0 || libraryTabButtons.length === 0) {
+    currentLibraryView = targetView || 'library';
+    return;
+  }
+
+  const allowedViews = ['library', 'summarized', 'unsummarized'];
+  const normalizedView = allowedViews.includes(targetView) ? targetView : 'library';
+
+  if (!force && normalizedView === currentLibraryView) {
+    return;
+  }
+
+  const activeElement = libraryViewElements.find(view => view.classList.contains('active'));
+  if (activeElement) {
+    const activeViewKey = activeElement.getAttribute('data-library-view');
+    if (activeViewKey && Object.prototype.hasOwnProperty.call(libraryViewScrollPositions, activeViewKey)) {
+      libraryViewScrollPositions[activeViewKey] = activeElement.scrollTop;
+    }
+  }
+
+  libraryViewElements.forEach(view => {
+    view.classList.remove('active');
+  });
+
+  libraryTabButtons.forEach(btn => {
+    const matches = btn.getAttribute('data-library-target') === normalizedView;
+    btn.classList.toggle('active', matches);
+    btn.setAttribute('aria-pressed', matches ? 'true' : 'false');
+  });
+
+  const nextElement = libraryViewElements.find(view => view.getAttribute('data-library-view') === normalizedView);
+  if (nextElement) {
+    nextElement.classList.add('active');
+    const savedScroll = libraryViewScrollPositions[normalizedView] || 0;
+    requestAnimationFrame(() => {
+      nextElement.scrollTop = savedScroll;
+    });
+  }
+
+  currentLibraryView = normalizedView;
+}
+
+/**
+ * Toggle library maintenance menu visibility
+ */
+function openLibraryDangerMenu() {
+  if (!libraryDangerWrapper || !libraryDangerToggle) {
+    return;
+  }
+  libraryDangerWrapper.classList.add('open');
+  libraryDangerToggle.setAttribute('aria-expanded', 'true');
+  if (libraryDangerMenu) {
+    libraryDangerMenu.setAttribute('aria-hidden', 'false');
+    requestAnimationFrame(() => {
+      libraryDangerMenu.focus({ preventScroll: true });
+    });
+  }
+}
+
+function closeLibraryDangerMenu() {
+  if (!libraryDangerWrapper || !libraryDangerToggle) {
+    return;
+  }
+  libraryDangerWrapper.classList.remove('open');
+  libraryDangerToggle.setAttribute('aria-expanded', 'false');
+  if (libraryDangerMenu) {
+    libraryDangerMenu.setAttribute('aria-hidden', 'true');
+  }
 }
 
 /**
@@ -2944,13 +3124,13 @@ async function loadLabelView(labelId) {
       summaryContent.innerHTML = `<p class="summary-placeholder">Click "Generate Summary" to create an aggregated summary from all conversations in this label.</p>`;
     }
 
-    // Load bullet points if exists
+    // Load stored mind map if it exists
     if (label.bulletPoints) {
       bulletpointsContent.innerHTML = label.bulletPoints;
-      // Attach click handlers to loaded bullet point links
+      // Attach click handlers to loaded mind map links
       attachBulletPointsClickHandlers();
     } else {
-      bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder">Click "Generate Bullet Points" to create a structured mindmap-style summary from all conversations in this label.</p>`;
+      bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder">Click "Generate Mind Map" to create a layered overview of every conversation in this label.</p>`;
     }
 
     // Reset to summary tab
@@ -3188,10 +3368,10 @@ async function handleGenerateLabelSummary() {
 }
 
 /**
- * Handle generate bullet points
+ * Handle mind map generation
  */
 async function handleGenerateBulletPoints() {
-  console.log('[Popup] Generating bullet points...');
+  console.log('[Popup] Generating mind map...');
 
   try {
     // Disable button
@@ -3215,18 +3395,18 @@ async function handleGenerateBulletPoints() {
     }
 
     // Show loading state
-    bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder">Generating AI-powered categorized bullet points from ${chatsWithContext.length} conversations...</p>`;
+    bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder">Generating an AI-powered mind map from ${chatsWithContext.length} conversations...</p>`;
 
     // Get label name for context
     const label = await StorageService.getLabel(currentLabelId);
     const labelName = label ? label.name : '';
 
-    // Use AI to create structured bullet points with chat links
+    // Use AI to create a structured mind map with chat links
     const bulletPointsHTML = await AIService.generateBulletPoints(chatsWithContext, labelName);
 
     bulletpointsContent.innerHTML = bulletPointsHTML;
 
-    // Save bullet points to label
+    // Save mind map to label
     await StorageService.updateLabel(currentLabelId, {
       bulletPoints: bulletPointsHTML
     });
@@ -3234,28 +3414,29 @@ async function handleGenerateBulletPoints() {
     // Attach click handlers to chat links
     attachBulletPointsClickHandlers();
 
-    console.log('[Popup] Bullet points generated successfully');
+    console.log('[Popup] Mind map generated successfully');
 
   } catch (error) {
-    console.error('[Popup] Error generating bullet points:', error);
+    console.error('[Popup] Error generating mind map:', error);
     bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder" style="color: #ef4444;">Error: ${error.message}</p>`;
   } finally {
     // Re-enable button
     generateBulletPointsBtn.disabled = false;
     generateBulletPointsBtn.innerHTML = `
-      <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
-        <circle cx="4" cy="2" r="1.5" fill="currentColor" stroke="none"/>
-        <circle cx="4" cy="7" r="1.5" fill="currentColor" stroke="none"/>
-        <circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/>
-        <path d="M7 2h6M7 7h6M7 12h6" stroke-width="1.5" stroke-linecap="round"/>
+      <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+        <circle cx="8" cy="8" r="2.5" stroke-width="1.4"/>
+        <circle cx="3" cy="3" r="1.8" stroke-width="1.2"/>
+        <circle cx="13" cy="4" r="1.5" stroke-width="1.2"/>
+        <circle cx="4" cy="13" r="1.5" stroke-width="1.2"/>
+        <path d="M4.5 4.5L6.8 6.8M11.2 5L9 6.5M5.5 11.5L7.3 9.7" stroke-width="1.2" stroke-linecap="round"/>
       </svg>
-      Generate Bullet Points
+      Generate Mind Map
     `;
   }
 }
 
 /**
- * Attach click handlers to bullet point chat links
+ * Attach click handlers to mind map chat links
  */
 function attachBulletPointsClickHandlers() {
   const chatLinks = bulletpointsContent.querySelectorAll('.chat-link');
