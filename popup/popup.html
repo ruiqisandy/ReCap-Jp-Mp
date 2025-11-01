@@ -151,14 +151,9 @@
         <nav class="library-tabbar" aria-label="Library navigation">
           <button type="button" class="library-tab active" data-library-target="library" aria-pressed="true">Library</button>
           <button type="button" class="library-tab" data-library-target="summarized" aria-pressed="false">Summarized</button>
-          <button type="button" class="library-tab" data-library-target="unsummarized" aria-pressed="false">Unsummarized</button>
+          <button type="button" class="library-tab" data-library-target="unsummarized" aria-pressed="false">Raw</button>
         </nav>
         <div class="library-header-actions">
-          <button id="refreshBtn" class="btn-icon-only" title="Refresh library">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-              <path d="M17.5 10C17.5 14.1421 14.1421 17.5 10 17.5C5.85786 17.5 2.5 14.1421 2.5 10C2.5 5.85786 5.85786 2.5 10 2.5C12.5 2.5 14.5 4 15.5 6M15.5 2.5V6H12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
           <div class="library-danger">
             <button id="libraryDangerToggle" class="btn-icon-only btn-icon-danger" aria-haspopup="true" aria-expanded="false" title="Library maintenance">
               <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
@@ -204,13 +199,13 @@
             <div class="section-header">
               <h2>Your Library</h2>
               <div style="display: flex; align-items: center; gap: 8px;">
-                <button id="createLabelBtn" class="btn btn-small">
+                <button id="createLabelBtn" class="btn btn-small btn-secondary">
                   <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
                     <path d="M8 3V13M3 8H13" stroke-width="2" stroke-linecap="round"/>
                   </svg>
                   Create New
                 </button>
-                <button id="clearAcceptedBtn" class="btn btn-small" style="display: none; background: #ef4444; color: white;">
+                <button id="clearAcceptedBtn" class="btn btn-small" style="display: none;">
                   <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
                     <path d="M1 3.5h12M5.5 1h3M5.5 13h3M5.5 5.5v5M8.5 5.5v5" stroke-width="1.5" stroke-linecap="round"/>
                   </svg>
@@ -258,7 +253,7 @@
         <div class="library-view" data-library-view="unsummarized">
           <section class="library-section is-scrollable">
             <div class="section-header">
-              <h2>Unsummarized Conversations</h2>
+              <h2>Raw Conversations</h2>
               <span class="badge" id="unsummarizedBadge">0</span>
             </div>
 
@@ -282,7 +277,7 @@
             <!-- Chat List Container -->
             <div class="list-container scrollable" id="unsummarizedList">
               <div class="empty-state">
-                <p>No unsummarized chats. Import or summarize new chats to populate this list.</p>
+                <p>No raw chats yet. Import or summarize new chats to populate this list.</p>
               </div>
             </div>
           </section>
@@ -299,7 +294,7 @@
           </svg>
         </button>
         <div class="workflow-titles">
-          <h1>Organize Your Chats</h1>
+          <h1>Create New Library</h1>
           <p>Pick preferred labels or let the AI suggest new categories.</p>
         </div>
       </header>
@@ -320,6 +315,7 @@
                   </svg>
                   Add Preferred Label
                 </button>
+                <span id="preferredLabelsStatus" class="preferred-labels-status">(Up to six labels)</span>
               </div>
               <div class="preferred-labels-list" id="preferredLabelsList">
                 <div class="preferred-labels-empty">
@@ -328,16 +324,19 @@
               </div>
             </div>
             <div class="preferred-labels-footer compact">
-              <span id="preferredLabelsStatus" class="preferred-labels-status">Add up to six labels or skip to auto-categorize.</span>
               <div class="preferred-labels-actions">
-                <button id="savePreferredLabelsBtn" class="btn btn-primary" type="button">
+                <button id="savePreferredLabelsBtn" class="btn btn-primary btn-small" type="button">
                   <svg class="btn-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor">
                     <path d="M15 5l-7.5 7L3 7.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   Save &amp; Classify
                 </button>
-                <button id="continueWithoutPreferencesBtn" class="btn btn-secondary" type="button">
-                  Continue Without Preferences
+                <button id="continueWithoutPreferencesBtn" class="btn btn-secondary btn-small" type="button">
+                  <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+                    <path d="M6 3l5 5-5 5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 8h8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  Skip Preference
                 </button>
               </div>
             </div>
@@ -347,13 +346,10 @@
         <!-- Classification Status Section -->
         <section class="workflow-section" id="labelGenerationSection">
           <div class="workflow-card highlight">
-            <div id="labelGenerationProgress" class="workflow-progress" style="display: none;">
-              <div class="progress-bar">
-                <div class="progress-fill" id="labelProgressFill"></div>
-              </div>
-              <p class="status-text" id="labelStatusText">Preparing...</p>
+            <div id="labelGenerationSpinner" class="generation-spinner">
+              <span class="spinner" aria-hidden="true"></span>
+              <p class="status-text" id="labelStatusText">Ready to categorize chats.</p>
             </div>
-            <p class="workflow-hint">We’ll automatically group chats as soon as you save or skip.</p>
           </div>
         </section>
 
@@ -366,7 +362,7 @@
             </div>
             <div class="workflow-suggestions-toolbar">
               <span class="badge" id="suggestedBadge">0</span>
-              <button id="clearSuggestedBtn" class="btn btn-small" style="display: none; background: #ef4444; color: white;">
+              <button id="clearSuggestedBtn" class="btn btn-small" style="display: none;">
                 <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
                   <path d="M1 3.5h12M5.5 1h3M5.5 13h3M5.5 5.5v5M8.5 5.5v5" stroke-width="1.5" stroke-linecap="round"/>
                 </svg>
@@ -402,8 +398,7 @@
         <div class="tab-nav">
           <button class="tab-button active" data-tab="summary">Summary</button>
           <button class="tab-button" data-tab="chatlist">Chat List</button>
-          <button class="tab-button" data-tab="mindmap">Mind Map</button>
-          <button class="tab-button" data-tab="bulletpoints">Generate</button>
+          <button class="tab-button" data-tab="bulletpoints">Mind Map</button>
         </div>
 
         <!-- Tab Content -->
@@ -449,23 +444,7 @@
             </div>
           </div>
 
-          <!-- Mind Map Tab (Placeholder) -->
-          <div id="mindmapTab" class="tab-panel">
-            <div class="placeholder-tab">
-              <svg width="64" height="64" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="32" cy="32" r="10"/>
-                <circle cx="12" cy="16" r="6"/>
-                <circle cx="52" cy="16" r="6"/>
-                <circle cx="12" cy="48" r="6"/>
-                <circle cx="52" cy="48" r="6"/>
-                <path d="M22 28L18 22M42 28L46 22M22 36L18 42M42 36L46 42"/>
-              </svg>
-              <h3>Mind Map Visualization</h3>
-              <p>Coming soon! Visual representation of topics and concepts from your conversations.</p>
-            </div>
-          </div>
-
-          <!-- Mind Map Tab -->
+          <!-- Generate Tab -->
           <div id="bulletpointsTab" class="tab-panel">
             <div id="bulletpointsContent" class="bulletpoints-content">
               <p class="bulletpoints-placeholder">Click "Generate Mind Map" to create a layered overview of every conversation in this label.</p>

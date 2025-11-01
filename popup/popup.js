@@ -53,7 +53,6 @@ const viewLibraryBtn = document.getElementById('viewLibraryBtn');
 // DOM elements - Library Screen
 const libraryScreen = document.getElementById('libraryScreen');
 const backToWelcomeFromLibraryBtn = document.getElementById('backToWelcomeFromLibraryBtn');
-const refreshBtn = document.getElementById('refreshBtn');
 
 // DOM elements - Label View Screen
 const labelScreen = document.getElementById('labelScreen');
@@ -85,8 +84,10 @@ const labelGenerationSection = document.getElementById('labelGenerationSection')
 const generateLabelsBtn = document.getElementById('generateLabelsBtn');
 const labelGenerationTitle = document.getElementById('labelGenerationTitle');
 const labelGenerationSubtitle = document.getElementById('labelGenerationSubtitle');
-const labelGenerationProgress = document.getElementById('labelGenerationProgress');
-const labelProgressFill = document.getElementById('labelProgressFill');
+const labelGenerationSpinner = document.getElementById('labelGenerationSpinner');
+const labelSpinnerIcon = labelGenerationSpinner
+  ? labelGenerationSpinner.querySelector('.spinner')
+  : null;
 const labelStatusText = document.getElementById('labelStatusText');
 
 // Preferred labels section
@@ -268,7 +269,6 @@ function setupEventListeners() {
 
   // Library Screen
   backToWelcomeFromLibraryBtn.addEventListener('click', () => showScreen('welcome'));
-  refreshBtn.addEventListener('click', loadLibrary);
   summarizeBtn.addEventListener('click', handleSummarizeChats);
   clearSuggestedBtn.addEventListener('click', handleClearSuggestedLabels);
   createLabelBtn.addEventListener('click', handleCreateLabel);
@@ -1308,11 +1308,9 @@ async function runWorkflowClassification(mode) {
   if (labelGenerationSection) {
     labelGenerationSection.style.display = 'block';
   }
-  if (labelGenerationProgress) {
-    labelGenerationProgress.style.display = 'flex';
-    if (labelProgressFill) {
-      labelProgressFill.style.width = '0%';
-    }
+  if (labelGenerationSpinner) {
+    labelGenerationSpinner.style.display = 'flex';
+    labelGenerationSpinner.classList.add('is-busy');
   }
   if (labelStatusText) {
     labelStatusText.textContent = isAutoMode
@@ -1325,10 +1323,6 @@ async function runWorkflowClassification(mode) {
       mode,
       preferredLabelNames: savedPreferredLabelNames,
       onProgress: (current, total, message) => {
-        if (labelProgressFill && total > 0) {
-          const progress = (current / total) * 100;
-          labelProgressFill.style.width = `${progress}%`;
-        }
         if (labelStatusText) {
           labelStatusText.textContent = message || (isAutoMode ? 'Generating labels...' : 'Classifying chats...');
         }
@@ -1345,6 +1339,9 @@ async function runWorkflowClassification(mode) {
         ? `Generated ${labelDescriptor}${chatText}!`
         : `Successfully classified ${labelDescriptor}${chatText}!`;
     }
+    if (labelGenerationSpinner) {
+      labelGenerationSpinner.classList.remove('is-busy');
+    }
 
     showToast('Successfully added!', 'success');
     await loadLibrary();
@@ -1354,6 +1351,9 @@ async function runWorkflowClassification(mode) {
     console.error('[Popup] Label generation error:', error);
     if (labelStatusText) {
       labelStatusText.textContent = 'Error: ' + error.message;
+    }
+    if (labelGenerationSpinner) {
+      labelGenerationSpinner.classList.remove('is-busy');
     }
     throw error;
   } finally {
@@ -1598,8 +1598,10 @@ async function handleGenerateLabels() {
     generateLabelsBtn.disabled = true;
     generateLabelsBtn.dataset.state = 'busy';
     generateLabelsBtn.textContent = isAutoMode ? 'Generating...' : 'Classifying...';
-    labelGenerationProgress.style.display = 'flex';
-    labelProgressFill.style.width = '0%';
+    if (labelGenerationSpinner) {
+      labelGenerationSpinner.style.display = 'flex';
+      labelGenerationSpinner.classList.add('is-busy');
+    }
     labelStatusText.textContent = isAutoMode
       ? 'Preparing auto label suggestions...'
       : 'Initializing classification...';
@@ -1608,14 +1610,11 @@ async function handleGenerateLabels() {
       mode: isAutoMode ? 'auto' : 'preferred',
       preferredLabelNames: savedPreferredLabelNames,
       onProgress: (current, total, message) => {
-        const progress = total > 0 ? (current / total) * 100 : 0;
-        labelProgressFill.style.width = `${progress}%`;
         labelStatusText.textContent = message || (isAutoMode ? 'Generating labels...' : 'Classifying chats...');
       }
     });
 
     // Success
-    labelProgressFill.style.width = '100%';
     const labelDescriptor = `${labelCount} ${isAutoMode ? 'suggested label' : 'preferred label'}${labelCount === 1 ? '' : 's'}`;
     const chatText = matchedChatCount > 0
       ? ` covering ${matchedChatCount} chat${matchedChatCount === 1 ? '' : 's'}`
@@ -1624,10 +1623,12 @@ async function handleGenerateLabels() {
     labelStatusText.textContent = isAutoMode
       ? `Generated ${labelDescriptor}${chatText}!`
       : `Successfully classified ${labelDescriptor}${chatText}!`;
+    if (labelGenerationSpinner) {
+      labelGenerationSpinner.classList.remove('is-busy');
+    }
 
     // Wait a moment then hide progress and refresh library
     setTimeout(async () => {
-      labelGenerationProgress.style.display = 'none';
       generateLabelsBtn.disabled = false;
       generateLabelsBtn.dataset.state = 'idle';
       updateLabelGenerationModeUI(processedChatCount);
@@ -1640,10 +1641,15 @@ async function handleGenerateLabels() {
     generateLabelsBtn.disabled = false;
     generateLabelsBtn.dataset.state = 'idle';
     updateLabelGenerationModeUI(processedChatCount);
+    if (labelGenerationSpinner) {
+      labelGenerationSpinner.classList.remove('is-busy');
+    }
 
-    // Show error for 5 seconds then hide
+    // Show error for a bit before clearing status
     setTimeout(() => {
-      labelGenerationProgress.style.display = 'none';
+      if (labelStatusText.textContent && labelStatusText.textContent.startsWith('Error:')) {
+        labelStatusText.textContent = 'Ready to categorize chats.';
+      }
     }, 5000);
   }
 }
@@ -2274,7 +2280,7 @@ function updatePreferredLabelsStatus(message, variant = 'info', persist = false)
   }
 
   const colors = {
-    info: '#5b21b6',
+    info: '#7f9189',
     success: '#15803d',
     error: '#b91c1c'
   };
@@ -2308,11 +2314,9 @@ function setWorkflowBusy(isBusy) {
 }
 
 function resetWorkflowProgress() {
-  if (labelGenerationProgress) {
-    labelGenerationProgress.style.display = 'flex';
-  }
-  if (labelProgressFill) {
-    labelProgressFill.style.width = '0%';
+  if (labelGenerationSpinner) {
+    labelGenerationSpinner.style.display = 'flex';
+    labelGenerationSpinner.classList.remove('is-busy');
   }
   if (labelStatusText) {
     labelStatusText.textContent = 'Ready to categorize chats.';
@@ -3075,7 +3079,7 @@ let expandedLabelChats = new Set();
 
 // Preferred labels state
 const MAX_PREFERRED_LABELS = 6;
-const PREFERRED_LABEL_STATUS_DEFAULT = 'Add up to six labels or skip to auto-categorize.';
+const PREFERRED_LABEL_STATUS_DEFAULT = '(Up to six labels)';
 let preferredLabels = [];
 let savedPreferredLabelNames = [];
 let preferredStatusTimeout = null;
@@ -3164,7 +3168,6 @@ function switchTab(tabName) {
   const panels = {
     summary: document.getElementById('summaryTab'),
     chatlist: document.getElementById('chatlistTab'),
-    mindmap: document.getElementById('mindmapTab'),
     bulletpoints: document.getElementById('bulletpointsTab')
   };
 

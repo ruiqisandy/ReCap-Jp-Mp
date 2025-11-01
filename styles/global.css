@@ -8,13 +8,13 @@
 /* CSS Variables for Consistent Theming */
 :root {
   /* Primary Colors */
-  --color-primary: #667eea;
-  --color-primary-dark: #5568d3;
-  --color-primary-light: #8a9ef8;
+  --color-primary: #93bfc7;
+  --color-primary-dark: #7aa9b1;
+  --color-primary-light: #abe7b2;
 
   /* Secondary Colors */
-  --color-secondary: #764ba2;
-  --color-secondary-dark: #653a8b;
+  --color-secondary: #cbf3bb;
+  --color-secondary-dark: #a3d098;
 
   /* Neutral Colors */
   --color-gray-50: #f9fafb;
@@ -38,9 +38,9 @@
   --color-error: #ef4444;
   --color-error-light: #fecaca;
   --color-error-dark: #dc2626;
-  --color-info: #3b82f6;
-  --color-info-light: #bae6fd;
-  --color-info-dark: #0369a1;
+  --color-info: #93bfc7;
+  --color-info-light: #cbf3bb;
+  --color-info-dark: #6f9ba4;
 
   /* Spacing */
   --spacing-xs: 4px;
