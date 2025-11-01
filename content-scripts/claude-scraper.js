@@ -49,6 +49,56 @@
   }
 
   /**
+   * Extract placeholders describing non-text content within a container
+   * @param {Element} container - Message container element
+   * @returns {Array<string>} Attachment placeholder strings
+   */
+  function extractNonTextAttachments(container) {
+    if (!container) {
+      return [];
+    }
+
+    const placeholders = [];
+
+    const addPlaceholder = (type, description) => {
+      const details = description ? ` ${description}` : '';
+      placeholders.push(`[${type}]${details}`);
+    };
+
+    // Images (static uploads or inline renders)
+    container.querySelectorAll('img').forEach(img => {
+      const alt = img.getAttribute('alt')?.trim();
+      addPlaceholder('Image', alt || 'image attachment');
+    });
+
+    // Video snippets
+    container.querySelectorAll('video').forEach(video => {
+      const title = video.getAttribute('title')?.trim();
+      addPlaceholder('Video', title || 'video attachment');
+    });
+
+    // Audio clips
+    container.querySelectorAll('audio').forEach(audio => {
+      const title = audio.getAttribute('title')?.trim();
+      addPlaceholder('Audio', title || 'audio attachment');
+    });
+
+    // File download links
+    container.querySelectorAll('a[download]').forEach(link => {
+      const text = link.innerText?.trim() || link.getAttribute('download')?.trim();
+      addPlaceholder('File', text || 'download attachment');
+    });
+
+    // Canvas renders (e.g., sketches)
+    if (container.querySelector('canvas')) {
+      addPlaceholder('Canvas', 'embedded drawing');
+    }
+
+    // Deduplicate placeholders while preserving order
+    return Array.from(new Set(placeholders));
+  }
+
+  /**
    * Parse Claude messages from raw content text
    * @param {string} rawContent - Raw conversation text
    * @returns {Array} Array of message objects with role and content
@@ -288,19 +338,32 @@
 
         // Extract content from each message
         for (const { el, role } of allMessageElements) {
-          const content = el.innerText?.trim();
+          const textContent = el.innerText?.trim() || '';
+          const attachments = extractNonTextAttachments(el);
 
-          // Filter out boilerplate content
           const isBoilerplate =
-            !content ||
-            content.length === 0 ||
-            content === 'Share' ||
-            content === 'Retry' ||
-            content.startsWith('Claude can make mistakes') ||
-            content.startsWith('Claude does not have the ability') ||
-            /^(Sonnet|Claude|Opus|Haiku)\s+\d+(\.\d+)?$/.test(content); // Model version like "Sonnet 4.5"
+            (!textContent || textContent.length === 0 ||
+            textContent === 'Share' ||
+            textContent === 'Retry' ||
+            textContent.startsWith('Claude can make mistakes') ||
+            textContent.startsWith('Claude does not have the ability') ||
+            /^(Sonnet|Claude|Opus|Haiku)\s+\d+(\.\d+)?$/.test(textContent)) &&
+            attachments.length === 0; // ignore boilerplate only when no attachments
 
-          if (!isBoilerplate) {
+          if (isBoilerplate) {
+            continue;
+          }
+
+          let content = textContent;
+
+          if (attachments.length > 0) {
+            const attachmentSummary = attachments.join('\n');
+            content = content
+              ? `${content}\n${attachmentSummary}`
+              : attachmentSummary;
+          }
+
+          if (content) {
             messages.push({ role, content });
           }
         }

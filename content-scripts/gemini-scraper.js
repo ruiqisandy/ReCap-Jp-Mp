@@ -12,6 +12,29 @@
   console.log('[Gemini Scraper] Content script loaded');
 
   /**
+   * Truncate text at word boundary
+   * @param {string} text - Text to truncate
+   * @param {number} maxLength - Maximum length (default 80)
+   * @returns {string} Truncated text with ellipsis if needed
+   */
+  function truncateAtWordBoundary(text, maxLength = 80) {
+    if (!text || text.length <= maxLength) {
+      return text;
+    }
+
+    // Find the last space before maxLength
+    const truncated = text.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(' ');
+
+    // If there's a space, truncate there; otherwise use maxLength
+    if (lastSpace > 0) {
+      return truncated.substring(0, lastSpace) + '...';
+    }
+
+    return truncated + '...';
+  }
+
+  /**
    * Wait for an element to appear in the DOM
    * @param {string} selector - CSS selector
    * @param {number} timeout - Timeout in milliseconds
@@ -50,6 +73,50 @@
   }
 
   /**
+   * Extract placeholders describing non-text content within a message container
+   * @param {Element} container - Message container element
+   * @returns {Array<string>} Attachment placeholder strings
+   */
+  function extractNonTextAttachments(container) {
+    if (!container) {
+      return [];
+    }
+
+    const placeholders = [];
+
+    const addPlaceholder = (type, description) => {
+      const details = description ? ` ${description}` : '';
+      placeholders.push(`[${type}]${details}`);
+    };
+
+    container.querySelectorAll('img').forEach(img => {
+      const alt = img.getAttribute('alt')?.trim();
+      addPlaceholder('Image', alt || 'image attachment');
+    });
+
+    container.querySelectorAll('video').forEach(video => {
+      const title = video.getAttribute('title')?.trim();
+      addPlaceholder('Video', title || 'video attachment');
+    });
+
+    container.querySelectorAll('audio').forEach(audio => {
+      const title = audio.getAttribute('title')?.trim();
+      addPlaceholder('Audio', title || 'audio attachment');
+    });
+
+    container.querySelectorAll('a[download]').forEach(link => {
+      const text = link.innerText?.trim() || link.getAttribute('download')?.trim();
+      addPlaceholder('File', text || 'download attachment');
+    });
+
+    if (container.querySelector('canvas')) {
+      addPlaceholder('Canvas', 'embedded drawing');
+    }
+
+    return Array.from(new Set(placeholders));
+  }
+
+  /**
    * Extract conversation list from sidebar
    * @returns {Promise<Array>} Array of conversation metadata objects
    */
@@ -73,7 +140,12 @@
         try {
           // Extract title from conversation-title element
           const titleElement = elem.querySelector('.conversation-title');
-          const title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+          let title = titleElement?.textContent?.trim() || 'Untitled Conversation';
+
+          // Truncate long titles at word boundary
+          if (title !== 'Untitled Conversation') {
+            title = truncateAtWordBoundary(title, 80);
+          }
 
           // Extract ID from jslog attribute
           // Format: jslog="...BardVeMetadataKey:[...,["c_CONVERSATION_ID",...]]..."
@@ -266,12 +338,24 @@
             if (!content) {
               content = el.innerText?.trim() || el.textContent?.trim() || '';
             }
-
-            console.log('[Gemini Scraper] User message content length:', content.length, 'ID:', el.id);
           } else {
             content = el.innerText?.trim() || el.textContent?.trim() || '';
-            console.log('[Gemini Scraper] Assistant message content length:', content.length, 'ID:', el.id);
           }
+
+          const attachments = extractNonTextAttachments(el);
+          if (attachments.length > 0) {
+            const attachmentSummary = attachments.join('\n');
+            content = content
+              ? `${content}\n${attachmentSummary}`
+              : attachmentSummary;
+          }
+
+          console.log(
+            `[Gemini Scraper] ${role === 'user' ? 'User' : 'Assistant'} message content length:`,
+            content.length,
+            'ID:',
+            el.id
+          );
 
           if (content && content.length > 0) {
             messages.push({ role, content });
@@ -324,7 +408,7 @@
               extractedTitle !== 'Conversation with Gemini' &&
               extractedTitle !== 'Recent' &&
               extractedTitle.length > 0) {
-            title = extractedTitle;
+            title = truncateAtWordBoundary(extractedTitle, 80);
             console.log('[Gemini Scraper] Found title:', title);
             break;
           }
@@ -335,7 +419,7 @@
       if (title === 'Untitled Conversation' && messages.length > 0) {
         const firstUserMessage = messages.find(m => m.role === 'user');
         if (firstUserMessage) {
-          title = firstUserMessage.content.substring(0, 50) + (firstUserMessage.content.length > 50 ? '...' : '');
+          title = truncateAtWordBoundary(firstUserMessage.content, 80);
           console.log('[Gemini Scraper] Generated title from first user message:', title);
         }
       }

@@ -11,17 +11,6 @@
 
     <!-- SCREEN 1: WELCOME SCREEN -->
     <div id="welcomeScreen" class="screen">
-      <header class="welcome-header">
-        <div class="logo">
-          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-            <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="3"/>
-            <path d="M15 24L21 30L33 18" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <h1>AI-ReCap</h1>
-        <p class="tagline">Your AI Knowledge Hub</p>
-      </header>
-
       <main class="welcome-main">
         <h2>Let's turn your chat history into a personal knowledge base</h2>
 
@@ -33,18 +22,53 @@
           <p class="ai-status-hint">Chrome's Built-in AI will analyze and organize your chats</p>
         </div>
 
+        <div class="import-limits" role="group" aria-labelledby="importOptionsLabel">
+          <span id="importOptionsLabel" class="import-limits-label">Import from:</span>
+          <div class="import-limits-grid">
+            <div class="import-limit">
+              <span class="import-limit-title">ChatGPT</span>
+              <select id="chatgptLimitSelect">
+                <option value="0">Do not import</option>
+                <option value="50">Top 50</option>
+                <option value="100" selected>Top 100</option>
+                <option value="150">Top 150</option>
+                <option value="200">Top 200</option>
+              </select>
+            </div>
+
+            <div class="import-limit">
+              <span class="import-limit-title">Claude</span>
+              <select id="claudeLimitSelect">
+                <option value="0">Do not import</option>
+                <option value="50" selected>Top 50</option>
+              </select>
+            </div>
+
+            <div class="import-limit">
+              <span class="import-limit-title">Gemini</span>
+              <select id="geminiLimitSelect">
+                <option value="0">Do not import</option>
+                <option value="50" selected>Top 50</option>
+              </select>
+            </div>
+          </div>
+          <p class="import-limit-hint">Choose how many chats to import per platform. Select 0 to skip.</p>
+        </div>
+
         <button id="startImportBtn" class="btn btn-primary btn-large">
           <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
             <path d="M10 3V17M10 17L5 12M10 17L15 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          Import & Analyze All Chats
+          Import & Analyze Selected Chats
         </button>
 
-        <button id="viewLibraryFromWelcomeBtn" class="btn-link" style="margin-top: 12px; display: none;">
-          View My Library →
+        <button id="viewLibraryFromWelcomeBtn" class="btn btn-secondary btn-large view-library-btn" style="margin-top: 12px; display: none;">
+          <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M12 5L17 10L12 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M17 10H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          View My Library
         </button>
-
-        <p class="hint-text">We'll automatically detect your conversations from supported sites</p>
       </main>
 
       <footer class="welcome-footer">
@@ -119,92 +143,335 @@
     <!-- SCREEN 3: LIBRARY SCREEN -->
     <div id="libraryScreen" class="screen" style="display: none;">
       <header class="library-header">
-        <button id="backToWelcomeFromLibraryBtn" class="btn-icon-only" style="margin-right: auto;">
+        <button id="backToWelcomeFromLibraryBtn" class="btn-icon-only back-button" title="Back to welcome">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
             <path d="M12.5 15L7.5 10L12.5 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
-        <h1>Your Knowledge Hub</h1>
-        <button id="refreshBtn" class="btn-icon-only">
+        <nav class="library-tabbar" aria-label="Library navigation">
+          <button type="button" class="library-tab active" data-library-target="library" aria-pressed="true">Library</button>
+          <button type="button" class="library-tab" data-library-target="summarized" aria-pressed="false">Summarized</button>
+          <button type="button" class="library-tab" data-library-target="unsummarized" aria-pressed="false">Raw</button>
+        </nav>
+        <div class="library-header-actions">
+          <div class="library-danger">
+            <button id="libraryDangerToggle" class="btn-icon-only btn-icon-danger" aria-haspopup="true" aria-expanded="false" title="Library maintenance">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+                <path d="M5 5V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M4 5h12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M7 8v6M10 8v6M13 8v6" stroke-width="2" stroke-linecap="round"/>
+                <path d="M6 5h8v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5z" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <div id="libraryDangerMenu" class="library-danger-menu" role="menu" tabindex="-1" aria-hidden="true">
+              <button type="button" id="dropSummariesOption" class="library-danger-item" role="menuitem">
+                Drop Summaries
+              </button>
+              <button type="button" id="deleteDataOption" class="library-danger-item library-danger-delete" role="menuitem">
+                Delete Imported Data
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+      <main class="library-main">
+        <div class="library-view active" data-library-view="library">
+        <!-- Summarize Chats CTA -->
+        <section class="library-mini-section summarize-section" id="summarizationSection" style="display: none;">
+          <div class="summarize-bar">
+            <div class="summarize-content">
+              <span class="summarize-heading" id="summarizeHeading">Summarize Conversations</span>
+              <div id="summarizationProgress" class="summarize-progress" style="display: none;">
+                <div class="progress-bar">
+                  <div class="progress-fill" id="summarizeProgressFill"></div>
+                </div>
+                <p class="status-text" id="summarizeStatusText">Initializing...</p>
+              </div>
+            </div>
+            <button id="summarizeBtn" class="btn btn-primary btn-small summarize-action" data-state="idle" aria-label="Summarize chats">
+              <span class="summarize-action-label" id="summarizeActionLabel">Summarize</span>
+              <span class="summarize-action-count" id="summarizeCount">0</span>
+            </button>
+          </div>
+        </section>
+          <!-- Your Library Section -->
+          <section class="library-section">
+            <div class="section-header">
+              <h2>Your Library</h2>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button id="createLabelBtn" class="btn btn-small btn-secondary">
+                  <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+                    <path d="M8 3V13M3 8H13" stroke-width="2" stroke-linecap="round"/>
+                  </svg>
+                  Create New
+                </button>
+                <button id="clearAcceptedBtn" class="btn btn-small" style="display: none;">
+                  <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+                    <path d="M1 3.5h12M5.5 1h3M5.5 13h3M5.5 5.5v5M8.5 5.5v5" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  Clear All
+                </button>
+              </div>
+            </div>
+            <div class="list-container" id="labelList">
+              <div class="empty-state">
+                <p>Your curated labels will appear here.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="library-view" data-library-view="summarized">
+          <section class="library-section is-scrollable">
+            <div class="section-header">
+              <h2>Summarized Conversations</h2>
+              <span class="badge" id="summarizedBadge">0</span>
+            </div>
+            <div class="filter-buttons" data-filter-context="summarized">
+              <button class="filter-btn active" data-platform="all">All</button>
+              <button class="filter-btn" data-platform="chatgpt">
+                <span class="platform-dot chatgpt"></span>
+                ChatGPT
+              </button>
+              <button class="filter-btn" data-platform="claude">
+                <span class="platform-dot claude"></span>
+                Claude
+              </button>
+              <button class="filter-btn" data-platform="gemini">
+                <span class="platform-dot gemini"></span>
+                Gemini
+              </button>
+            </div>
+            <div class="list-container scrollable" id="summarizedList">
+              <div class="empty-state">
+                <p>No summarized chats yet. Run Summarize to generate them.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="library-view" data-library-view="unsummarized">
+          <section class="library-section is-scrollable">
+            <div class="section-header">
+              <h2>Raw Conversations</h2>
+              <span class="badge" id="unsummarizedBadge">0</span>
+            </div>
+
+            <!-- Platform Filters -->
+            <div class="filter-buttons" data-filter-context="unsummarized">
+              <button class="filter-btn active" data-platform="all">All</button>
+              <button class="filter-btn" data-platform="chatgpt">
+                <span class="platform-dot chatgpt"></span>
+                ChatGPT
+              </button>
+              <button class="filter-btn" data-platform="claude">
+                <span class="platform-dot claude"></span>
+                Claude
+              </button>
+              <button class="filter-btn" data-platform="gemini">
+                <span class="platform-dot gemini"></span>
+                Gemini
+              </button>
+            </div>
+
+            <!-- Chat List Container -->
+            <div class="list-container scrollable" id="unsummarizedList">
+              <div class="empty-state">
+                <p>No raw chats yet. Import or summarize new chats to populate this list.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <!-- SCREEN 4: LABEL WORKFLOW -->
+    <div id="labelWorkflowScreen" class="screen" style="display: none;">
+      <header class="workflow-header">
+        <button id="backToLibraryFromWorkflowBtn" class="btn-icon-only" title="Back to Library">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
-            <path d="M17.5 10C17.5 14.1421 14.1421 17.5 10 17.5C5.85786 17.5 2.5 14.1421 2.5 10C2.5 5.85786 5.85786 2.5 10 2.5C12.5 2.5 14.5 4 15.5 6M15.5 2.5V6H12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12.5 15L7.5 10L12.5 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+        <div class="workflow-titles">
+          <h1>Create New Library</h1>
+          <p>Pick preferred labels or let the AI suggest new categories.</p>
+        </div>
       </header>
 
-      <main class="library-main">
-        <!-- Suggested Labels Section -->
-        <section class="library-section">
-          <div class="section-header">
-            <h2>Suggested Labels</h2>
-            <span class="badge" id="suggestedBadge">0</span>
-          </div>
-          <div class="list-container" id="suggestedList">
-            <div class="empty-state">
-              <p>No suggestions yet. Import chats and run AI processing to get started.</p>
+      <main class="workflow-main">
+        <!-- Preferred Labels Section -->
+        <section class="workflow-section" id="preferredLabelsSection">
+          <div class="workflow-card">
+            <div class="workflow-card-header">
+              <h3>Preferred Labels</h3>
+              <p>Tell us the topics you care about. Chats will be grouped only into these labels.</p>
+            </div>
+            <div class="preferred-labels-wrapper">
+              <div class="preferred-labels-controls header">
+                <button id="addPreferredLabelBtn" class="btn btn-small" type="button">
+                  <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+                    <path d="M7 2v10M2 7h10" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  Add Preferred Label
+                </button>
+                <span id="preferredLabelsStatus" class="preferred-labels-status">(Up to six labels)</span>
+              </div>
+              <div class="preferred-labels-list" id="preferredLabelsList">
+                <div class="preferred-labels-empty">
+                  <p>Add the topics you care about to get tailored label suggestions.</p>
+                </div>
+              </div>
+            </div>
+            <div class="preferred-labels-footer compact">
+              <div class="preferred-labels-actions">
+                <button id="savePreferredLabelsBtn" class="btn btn-primary btn-small" type="button">
+                  <svg class="btn-icon" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor">
+                    <path d="M15 5l-7.5 7L3 7.5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  Save &amp; Classify
+                </button>
+                <button id="continueWithoutPreferencesBtn" class="btn btn-secondary btn-small" type="button">
+                  <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+                    <path d="M6 3l5 5-5 5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 8h8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  Skip Preference
+                </button>
+              </div>
             </div>
           </div>
         </section>
 
-        <!-- Your Library Section -->
-        <section class="library-section">
-          <div class="section-header">
-            <h2>Your Library</h2>
-            <button id="createLabelBtn" class="btn btn-small">
-              <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
-                <path d="M8 3V13M3 8H13" stroke-width="2" stroke-linecap="round"/>
-              </svg>
-              Create New
-            </button>
-          </div>
-          <div class="list-container" id="labelList">
-            <div class="empty-state">
-              <p>Your curated labels will appear here.</p>
+        <!-- Classification Status Section -->
+        <section class="workflow-section" id="labelGenerationSection">
+          <div class="workflow-card highlight">
+            <div id="labelGenerationSpinner" class="generation-spinner">
+              <span class="spinner" aria-hidden="true"></span>
+              <p class="status-text" id="labelStatusText">Ready to categorize chats.</p>
             </div>
           </div>
         </section>
 
-        <!-- All Conversations Section (NEW) -->
-        <section class="library-section">
-          <div class="section-header">
-            <h2>All Conversations</h2>
-            <span class="badge" id="allChatsBadge">0</span>
-          </div>
-
-          <!-- Platform Filters -->
-          <div class="filter-buttons">
-            <button class="filter-btn active" data-platform="all">All</button>
-            <button class="filter-btn" data-platform="chatgpt">
-              <span class="platform-dot chatgpt"></span>
-              ChatGPT
-            </button>
-            <button class="filter-btn" data-platform="claude">
-              <span class="platform-dot claude"></span>
-              Claude
-            </button>
-            <button class="filter-btn" data-platform="gemini">
-              <span class="platform-dot gemini"></span>
-              Gemini
-            </button>
-          </div>
-
-          <!-- Chat List Container -->
-          <div class="list-container" id="chatList">
-            <div class="empty-state">
-              <p>No conversations yet. Import chats to see them here.</p>
+        <!-- Suggested Labels (Workflow) -->
+        <section class="workflow-section">
+          <div class="workflow-card">
+            <div class="workflow-card-header">
+              <h3>Suggested Labels</h3>
+              <p>Review AI suggestions and add the ones that look right.</p>
+            </div>
+            <div class="workflow-suggestions-toolbar">
+              <span class="badge" id="suggestedBadge">0</span>
+              <button id="clearSuggestedBtn" class="btn btn-small" style="display: none;">
+                <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+                  <path d="M1 3.5h12M5.5 1h3M5.5 13h3M5.5 5.5v5M8.5 5.5v5" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Clear All
+              </button>
+            </div>
+            <div class="list-container" id="suggestedList">
+              <div class="empty-state">
+                <p>No suggestions yet. Save preferences or skip to auto-generate them.</p>
+              </div>
             </div>
           </div>
         </section>
       </main>
+    </div>
 
-      <footer class="library-footer">
-        <button id="settingsBtn" class="btn-link">Settings</button>
-        <button id="clearDataBtn" class="btn-link text-danger">Clear All Data</button>
-      </footer>
+    <!-- SCREEN 5: LABEL VIEW SCREEN -->
+    <div id="labelScreen" class="screen" style="display: none;">
+      <header class="label-header">
+        <button id="backToLibraryBtn" class="btn-icon-only">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor">
+            <path d="M12.5 15L7.5 10L12.5 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="label-header-content">
+          <h1 id="labelViewName">Label Name</h1>
+          <span class="badge" id="labelViewChatCount">0 chats</span>
+        </div>
+      </header>
+
+      <main class="label-main">
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+          <button class="tab-button" data-tab="chatlist">Chat List</button>
+          <button class="tab-button" data-tab="summary">Summary</button>
+          <button class="tab-button" data-tab="bulletpoints">Mind Map</button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+          <!-- Summary Tab -->
+          <div id="summaryTab" class="tab-panel">
+            <div id="summaryContent" class="summary-content">
+              <p class="summary-placeholder">Click "Generate Summary" to create an aggregated summary from all conversations in this label.</p>
+            </div>
+            <div class="summary-actions">
+              <button id="generateSummaryBtn" class="btn btn-primary btn-small">
+                <svg class="btn-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+                  <path d="M7 1v12M1 7h12" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Generate Summary
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat List Tab (Default) -->
+          <div id="chatlistTab" class="tab-panel active">
+            <div class="chatlist-content">
+              <div class="chatlist-filters">
+                <button class="filter-btn active" data-platform="all">All</button>
+                <button class="filter-btn" data-platform="chatgpt">
+                  <span class="platform-dot chatgpt"></span>
+                  ChatGPT
+                </button>
+                <button class="filter-btn" data-platform="claude">
+                  <span class="platform-dot claude"></span>
+                  Claude
+                </button>
+                <button class="filter-btn" data-platform="gemini">
+                  <span class="platform-dot gemini"></span>
+                  Gemini
+                </button>
+              </div>
+              <div class="chatlist-items" id="labelChatList">
+                <div class="empty-state">
+                  <p>No conversations in this label.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Generate Tab -->
+          <div id="bulletpointsTab" class="tab-panel">
+            <div id="bulletpointsContent" class="bulletpoints-content">
+              <p class="bulletpoints-placeholder">Click "Generate Mind Map" to create a layered overview of every conversation in this label.</p>
+            </div>
+            <div class="bulletpoints-actions">
+              <button id="generateBulletPointsBtn" class="btn btn-primary btn-small">
+                <svg class="btn-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+                  <circle cx="8" cy="8" r="2.5" stroke-width="1.4"/>
+                  <circle cx="3" cy="3" r="1.8" stroke-width="1.2"/>
+                  <circle cx="13" cy="4" r="1.5" stroke-width="1.2"/>
+                  <circle cx="4" cy="13" r="1.5" stroke-width="1.2"/>
+                  <path d="M4.5 4.5L6.8 6.8M11.2 5L9 6.5M5.5 11.5L7.3 9.7" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                Generate Mind Map
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
 
   </div>
 
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="../lib/storage.js"></script>
+  <script src="../lib/ai-service.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
