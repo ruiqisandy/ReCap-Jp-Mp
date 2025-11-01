@@ -396,15 +396,15 @@
       <main class="label-main">
         <!-- Tab Navigation -->
         <div class="tab-nav">
-          <button class="tab-button active" data-tab="summary">Summary</button>
           <button class="tab-button" data-tab="chatlist">Chat List</button>
+          <button class="tab-button" data-tab="summary">Summary</button>
           <button class="tab-button" data-tab="bulletpoints">Mind Map</button>
         </div>
 
         <!-- Tab Content -->
         <div class="tab-content">
-          <!-- Summary Tab (Default) -->
-          <div id="summaryTab" class="tab-panel active">
+          <!-- Summary Tab -->
+          <div id="summaryTab" class="tab-panel">
             <div id="summaryContent" class="summary-content">
               <p class="summary-placeholder">Click "Generate Summary" to create an aggregated summary from all conversations in this label.</p>
             </div>
@@ -418,8 +418,8 @@
             </div>
           </div>
 
-          <!-- Chat List Tab -->
-          <div id="chatlistTab" class="tab-panel">
+          <!-- Chat List Tab (Default) -->
+          <div id="chatlistTab" class="tab-panel active">
             <div class="chatlist-content">
               <div class="chatlist-filters">
                 <button class="filter-btn active" data-platform="all">All</button>

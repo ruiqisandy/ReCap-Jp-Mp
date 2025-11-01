@@ -3137,10 +3137,10 @@ async function loadLabelView(labelId) {
       bulletpointsContent.innerHTML = `<p class="bulletpoints-placeholder">Click "Generate Mind Map" to create a layered overview of every conversation in this label.</p>`;
     }
 
-    // Reset to summary tab
-    switchTab('summary');
+    // Reset to chat list tab (default)
+    switchTab('chatlist');
 
-    // Render chat list (will be shown when user clicks Chat List tab)
+    // Render chat list
     renderLabelChatList(currentLabelChats);
 
     console.log('[Popup] Label view loaded successfully');

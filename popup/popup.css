@@ -1620,12 +1620,13 @@ body {
 /* Tab Navigation */
 .tab-nav {
   display: flex;
-  gap: 8px;
+  gap: 0;
   border-bottom: 2px solid var(--theme-border);
   padding-bottom: 2px;
 }
 
 .tab-button {
+  flex: 1;
   padding: 10px 20px;
   border: none;
   background: none;
@@ -1636,6 +1637,7 @@ body {
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   transition: all 0.2s ease;
+  text-align: center;
 }
 
 .tab-button:hover {
@@ -1856,6 +1858,256 @@ body {
   left: 0;
   color: #7f9189;
   font-size: 14px;
+}
+
+/* ========================================
+   MINDMAP VIEW (BULLETPOINTS TAB)
+   ======================================== */
+
+/* Container */
+.bulletpoints-content {
+  background: var(--theme-surface);
+  border: 1px solid var(--theme-border);
+  border-radius: 10px;
+  padding: 24px;
+  max-height: 500px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  line-height: 1.7;
+}
+
+.bulletpoints-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.bulletpoints-content::-webkit-scrollbar-thumb {
+  background: rgba(147, 191, 199, 0.4);
+  border-radius: 3px;
+}
+
+.bulletpoints-content::-webkit-scrollbar-track {
+  background: rgba(236, 244, 232, 0.3);
+}
+
+/* Main list - numbered list style */
+.bulletpoints-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: topic-counter;
+}
+
+/* Placeholder */
+.bulletpoints-placeholder {
+  color: #7f9189;
+  font-style: italic;
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 14px;
+}
+
+/* Top-level topics (main conceptual themes) - numbered */
+.mindmap-topic {
+  list-style: none;
+  margin-bottom: 24px;
+  counter-increment: topic-counter;
+}
+
+.mindmap-topic-header {
+  margin-bottom: 8px;
+}
+
+.mindmap-topic-header strong {
+  display: inline;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--theme-text);
+  line-height: 1.5;
+}
+
+.mindmap-topic-header strong::before {
+  content: counter(topic-counter) ") ";
+  color: var(--theme-accent-strong);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.mindmap-topic-header .mindmap-summary {
+  display: block;
+  font-size: 14px;
+  color: var(--theme-text-muted);
+  line-height: 1.6;
+  margin: 4px 0 0 28px;
+  font-weight: 400;
+}
+
+/* Level 1 - letters (a, b, c) */
+.mindmap-level.level-1 {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 28px;
+  counter-reset: level1-counter;
+}
+
+.mindmap-level.level-1 > .mindmap-node {
+  counter-increment: level1-counter;
+  margin-bottom: 12px;
+}
+
+.mindmap-level.level-1 > .mindmap-node > .mindmap-node-header > .mindmap-node-title::before {
+  content: counter(level1-counter, lower-alpha) ". ";
+  color: var(--theme-accent-strong);
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* Level 2 - bullets */
+.mindmap-level.level-2 {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0 28px;
+}
+
+.mindmap-level.level-2 > .mindmap-node {
+  margin-bottom: 8px;
+}
+
+.mindmap-level.level-2 > .mindmap-node > .mindmap-node-header > .mindmap-node-title::before {
+  content: "• ";
+  color: var(--theme-accent-strong);
+  margin-right: 6px;
+}
+
+/* Level 3 - dashes */
+.mindmap-level.level-3 {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0 28px;
+}
+
+.mindmap-level.level-3 > .mindmap-node {
+  margin-bottom: 6px;
+}
+
+.mindmap-level.level-3 > .mindmap-node > .mindmap-node-header > .mindmap-node-title::before {
+  content: "- ";
+  color: #7f9189;
+  margin-right: 6px;
+}
+
+/* Level 4 - small bullets */
+.mindmap-level.level-4 {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0 28px;
+}
+
+.mindmap-level.level-4 > .mindmap-node {
+  margin-bottom: 4px;
+}
+
+.mindmap-level.level-4 > .mindmap-node > .mindmap-node-header > .mindmap-node-title::before {
+  content: "◦ ";
+  color: #7f9189;
+  margin-right: 6px;
+  font-size: 10px;
+}
+
+/* Individual nodes */
+.mindmap-node {
+  list-style: none;
+}
+
+.mindmap-node-header {
+  display: block;
+}
+
+.mindmap-node-title {
+  display: inline;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--theme-text);
+  line-height: 1.6;
+}
+
+/* Level 2+ titles are smaller and less bold */
+.mindmap-level.level-2 > .mindmap-node > .mindmap-node-header > .mindmap-node-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mindmap-level.level-3 > .mindmap-node > .mindmap-node-header > .mindmap-node-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mindmap-level.level-4 > .mindmap-node > .mindmap-node-header > .mindmap-node-title {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--theme-text-muted);
+}
+
+/* Summary text */
+.mindmap-summary {
+  display: block;
+  font-size: 13px;
+  color: var(--theme-text-muted);
+  line-height: 1.6;
+  margin: 2px 0 0 0;
+}
+
+/* Related concepts */
+.mindmap-related {
+  display: inline-block;
+  font-size: 12px;
+  color: #60736a;
+  font-style: italic;
+  margin: 4px 0;
+}
+
+.mindmap-related::before {
+  content: "→ Related to: ";
+  font-weight: 500;
+  color: var(--theme-accent-strong);
+}
+
+/* Examples (chat links) */
+.mindmap-examples {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mindmap-examples .chat-bullet {
+  padding-left: 0;
+}
+
+.mindmap-examples .chat-bullet::before {
+  display: none;
+}
+
+.mindmap-examples .chat-link {
+  background: rgba(236, 244, 232, 0.5);
+  border-color: rgba(180, 208, 200, 0.5);
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+
+.mindmap-examples .chat-link:hover {
+  background: #edf4ef;
+  border-color: var(--theme-accent-strong);
+  transform: translateX(2px);
+}
+
+/* Actions */
+.bulletpoints-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* ========================================
