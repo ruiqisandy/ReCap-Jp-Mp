@@ -2,57 +2,81 @@
 
 **Chrome extension built for the Google Chrome Built-in AI Challenge 2025**
 
-Turn raw conversations from ChatGPT, Claude, and Gemini into a curated knowledge hub. AI-ReCap imports your chat history, stores it locally, and uses Chrome’s on-device Gemini Nano models to suggest thematic labels and power future visual tools such as mind maps and quizzes.
+Turn raw conversations from ChatGPT, Claude, and Gemini into a curated knowledge hub. AI-ReCap imports your chat history, stores it locally, and uses Chrome's on-device Gemini Nano models to create interactive learning tools.
 
 ---
 
-## Contents
+## Inspiration
 
-- [What It Does](#what-it-does)
-- [Architecture at a Glance](#architecture-at-a-glance)
-- [Setup & Installation](#setup--installation)
-- [Using the Extension](#using-the-extension)
-- [Data Model](#data-model)
-- [Roadmap](#roadmap)
-- [Team](#team)
-- [License](#license)
+We interact with LLMs daily, but these valuable conversations are often ephemeral and left unvisited. Many chats contain complex information that isn't fully understood in the moment.
 
----
+We saw an opportunity to change this. We envisioned a personal knowledge hub that imports chats from services like Gemini, ChatGPT, and Claude. The goal is to transform these transient conversations into a structured, reviewable knowledge base, allowing users to revisit, recap, and truly learn from their AI interactions.
 
 ## What It Does
 
-- **Bulk import AI chats**  
-  Parallel tab automation scrapes conversations from ChatGPT, Claude, and Gemini, normalizing them into a single schema.
+**AI-Recap** is a Chrome extension designed to capture and synthesize your AI chat history.
 
-- **On-device AI labeling**  
-  Chrome’s Built-in AI (Gemini Nano) analyzes the imported chats and suggests topic labels with confidence scores.
+- **Imports Chats:** It seamlessly imports your conversations from Gemini, ChatGPT, and Claude.
+- **Summarizes & Labels:** Using Chrome's built-in AI, the extension summarizes entire conversations and automatically labels them thematically (e.g., "Python Programming," "Marketing Strategy").
+- **Creates a Knowledge Hub:** It synthesizes this information into interactive learning tools. The primary feature is a **dynamic mind map** that visually organizes the concepts from your chats, helping you understand the connections between topics and relearn key information.
 
-- **Knowledge hub UI**  
-  A three-screen popup guides users through onboarding, import progress, and a library view that lists chats, suggested labels, and confirmed labels.
+## How We Built It
 
-- **Extensible AI tooling**  
-  The AI wrapper already includes stubs for generating mind maps and quizzes so future modules can surface richer knowledge experiences.
+Our process focused on breaking down chats into digestible pieces of knowledge:
 
----
+1. **Initial Summarization:** We first use a summarizer API to condense each individual message pair (a user's question and the AI's answer).
+2. **Headline Generation:** These "message pair summaries" are then used to generate a concise headline for the entire chat.
+3. **Thematic Labeling:** We process these summaries and headlines and feed them to another prompt API to generate relevant labels for each conversation.
+4. **Knowledge Hub Curation:** Within a specific label (e.g., "Linear Algebra"), we reuse all the associated message pair summaries and headlines to build a dedicated knowledge page. This page features a generated **mind map** that helps users visualize the relationships between different pieces of information, making it easier to review and understand the topic.
 
-## Architecture at a Glance
+### Tech Stack
 
-| Layer | Files | Responsibilities |
-|-------|-------|------------------|
-| **Popup UI** | `popup/popup.html`, `popup/popup.js`, `popup/popup.css`, `styles/global.css` | Renders welcome, import progress, and library screens. Manages user actions, orchestrates imports, and displays AI results. |
-| **Background Service Worker** | `background/service-worker.js` | Central message broker. Coordinates storage updates, AI processing, and popup/content-script communication. |
-| **Content Scripts** | `content-scripts/*.js` | Platform-specific scrapers that extract conversation metadata and transcripts from ChatGPT, Claude, and Gemini UIs. |
-| **Storage Layer** | `lib/storage.js` | Wrapper around `chrome.storage.local` with schemas for chats, labels, suggested labels, and settings. |
-| **AI Layer** | `lib/ai-service.js` | Wrapper around Chrome’s Built-in AI Prompt & Summarizer APIs. Provides availability checks, topic extraction, and future mind map/quiz generators. |
-| **Manifest & Assets** | `manifest.json`, `icons/*`, `background/`, `popup/` | Chrome extension configuration, permissions, and bundled resources. |
+- **Languages:** CSS, JavaScript
+- **Core Technique:** DOM scraping to import chat data directly from the LLM web interfaces.
+- **Storage:** Chrome's local storage is used to store all imported chats, summaries, and labels directly on the user's machine.
+- **AI APIs:** Chrome's Built-in AI (Summarizer API and Prompt API) for on-device processing.
 
-**Message Flow**
+### Software Architecture
 
-1. Popup requests import → orchestrates platform batches via Chrome tabs API.
-2. Scrapers return normalized conversations → popup sends `batchSaveChats` to background.
-3. Background persists data using `StorageService` and updates extension settings.
-4. Popup triggers AI analysis → background calls `AIService.extractTopics` and stores suggested labels.
-5. Library screen fetches chats/labels from background to render curated knowledge hub.
+The extension follows a modular Chrome extension architecture:
+
+| Layer | Components | Responsibilities |
+|-------|-----------|------------------|
+| **Popup UI** | `popup.html`, `popup.js`, `popup.css` | User interface for import controls, progress tracking, and knowledge hub visualization |
+| **Background Service Worker** | `service-worker.js` | Message broker coordinating storage, AI processing, and communication between components |
+| **Content Scripts** | Platform-specific scrapers (`chatgpt.js`, `claude.js`, `gemini.js`) | DOM scraping to extract conversations from each AI service |
+| **Storage Layer** | `storage.js` | Manages local storage for chats, labels, and settings |
+| **AI Layer** | `ai-service.js` | Wrapper around Chrome's Summarizer and Prompt APIs |
+
+**Message Flow:**
+1. User triggers import → Popup orchestrates scraping via content scripts
+2. Content scripts extract conversations → Background worker saves to local storage
+3. Background worker processes chats using AI APIs → Generates summaries and labels
+4. Popup displays results in knowledge hub with mind maps
+
+### Using Chrome's Built-in AI APIs
+
+**Summarizer API:**
+- Used to condense individual message pairs (user question + AI response) into concise summaries
+- Each summary becomes part of the chat's metadata for quick reference
+- Summaries are aggregated to generate a headline for the entire conversation
+
+**Prompt API:**
+- Processes the summaries and headlines to generate thematic labels (e.g., "Machine Learning," "Creative Writing")
+- Powers the mind map generation by analyzing relationships between concepts across conversations
+- Provides confidence scores for suggested labels to help users curate their knowledge base
+- All processing happens on-device using Gemini Nano, ensuring privacy and speed
+
+## Known Limitations
+
+- **Same Google Account:** Import only works under the same Google account used for the chats.
+- **Active Window Needed:** The chat page must remain open and visible during import; switching tabs will pause the process.
+- **ChatGPT Cap:** Only ~28 chats load if you are not actively on the page. To import more, you must have the popup open on the ChatGPT tab.
+- **Claude Limit:** Only the first 30 conversations can be scraped due to pagination issues.
+- **Gemini Testing:** Only a few chat samples were tested; stability is not guaranteed.
+- **No File Summaries:** Uploaded files or attachments are not processed.
+- **No Incremental Sync:** The current scraper does not track timestamps or edits, so duplicates may appear on re-import.
+- **Manual Sync Pending:** A "Re-Sync" button is planned. For now, users must re-import manually to refresh data.
 
 ---
 
@@ -60,63 +84,10 @@ Turn raw conversations from ChatGPT, Claude, and Gemini into a curated knowledge
 
 1. **Clone or download** this repository.
 2. **Enable Developer Mode** in Chrome by visiting `chrome://extensions`.
-3. Click **“Load unpacked”** and select the project root (`ReCap-Jp-Mp-module2.1.3_fix_chatgpt_gemini_messages`).
+3. Click **"Load unpacked"** and select the project root.
 4. Pin **AI-ReCap** from the extensions toolbar for quick access.
 
-> The extension relies on Chrome’s built-in AI APIs. On first run, it will check availability and may trigger on-device model downloads.
-
----
-
-## Using the Extension
-
-1. **Open the popup**  
-   The welcome screen checks AI readiness and offers a “Import & Analyze All Chats” button.
-
-2. **Run the import**  
-   - The progress screen shows platform-specific counters and a progress bar.
-   - Popup opens background tabs (up to six at a time) to scrape each conversation.
-   - Chats are saved locally via `StorageService`.
-
-3. **Let AI analyze**  
-   After importing, the popup calls `processChatsForLabels`. The background worker runs `AIService.extractTopics`, saves suggested labels, and returns status updates.
-
-4. **Explore your library**  
-   - Suggested labels appear with descriptions and confidence, ready to accept or dismiss.
-  - Confirmed labels and chats are listed with platform filters, message counts, and dates.
-  - Future modules will add mind maps, quizzes, and richer summaries using AIService hooks.
-
-5. **Manage data**  
-   The library footer includes “Clear All Data,” which wipes chats, labels, and settings from local storage.
-
----
-
-## Data Model
-
-All data is stored in `chrome.storage.local` under four namespaces:
-
-| Key | Description |
-|-----|-------------|
-| `chats` | Dictionary keyed by `chat.id`. Each entry contains platform (`chatgpt`, `claude`, `gemini`), title, timestamp, URL, message array, raw text, label references, and processing status. |
-| `labels` | User-approved labels that group related chats. Will later store mind map, summary, and quiz metadata. |
-| `suggestedLabels` | AI-generated label suggestions with name, description, confidence, associated chat IDs, and dismissed flag. |
-| `settings` | Extension metadata such as `lastSync`, `importStatus`, and `totalChatsImported`. |
-
----
-
-## Roadmap
-
-- **Mind maps** — Activate `AIService.generateMindMap` when a label is created or viewed.
-- **Interactive quizzes** — Use `AIService.generateQuiz` to produce study prompts per label.
-- **Settings panel** — Provide controls for AI thresholds, auto-processing, and platform toggles.
-- **Export/backup** — Allow exporting chats or label structures for external tools.
-- **Testing & telemetry** — Add integration tests/mocks for StorageService & AIService, surface optional analytics for user feedback.
-
----
-
-## Team
-
-- Sandy Yin  
-- Mandy Yin
+> The extension relies on Chrome's built-in AI APIs. On first run, it will check availability and may trigger on-device model downloads.
 
 ---
 
